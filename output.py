@@ -1,4 +1,4 @@
-from config import BASE_CURRENCY, NATIVE_CURRENCY
+from config import BASE_CURRENCY
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -16,12 +16,8 @@ def colorize(value, text):
 # ---------------------------
 # FINANZÜBERSICHT
 # ---------------------------
-def print_financial_overview(initial_cash_usd, initial_cash_eur, current_equity_usd, current_equity_eur):
-    pnl_usd = current_equity_usd - initial_cash_usd
-    pnl_eur = current_equity_eur - initial_cash_eur
-
+def print_financial_overview(initial_cash_eur, current_equity_eur, pnl_eur, native_currency, pnl_native):
     pnl_eur_str = colorize(pnl_eur, f"{pnl_eur:.2f} EUR")
-    pnl_usd_str = colorize(pnl_usd, f"{pnl_usd:.2f} USD")
 
     print("\n==============================")
     print("FINANZÜBERSICHT (Basis: EUR)")
@@ -29,16 +25,22 @@ def print_financial_overview(initial_cash_usd, initial_cash_eur, current_equity_
     print(f"Start          : {initial_cash_eur:.2f} EUR")
     print(f"Stand          : {current_equity_eur:.2f} EUR")
     print(f"Differenz      : {pnl_eur_str}")
-    print(f"(Info USD      : {pnl_usd_str})")
+
+    if native_currency != BASE_CURRENCY:
+        print(
+            f"Handelsergebnis ({native_currency}): "
+            f"{colorize(pnl_native, f'{pnl_native:.2f} {native_currency}')}"
+        )
+
     print("==============================\n")
 
 
 # ---------------------------
 # GESAMT
 # ---------------------------
-def print_summary_only(closed_trades):
+def print_summary_only(closed_trades, native_currency):
     total_pnl_eur = sum(t.get("pnl_eur", 0.0) for t in closed_trades)
-    total_pnl_usd = sum(t.get("pnl", 0.0) for t in closed_trades)
+    total_pnl_native = sum(t.get("pnl_native", 0.0) for t in closed_trades)
 
     wins = sum(1 for t in closed_trades if t.get("pnl_eur", 0.0) > 0)
     losses = sum(1 for t in closed_trades if t.get("pnl_eur", 0.0) < 0)
@@ -47,7 +49,6 @@ def print_summary_only(closed_trades):
     hit = (wins / total * 100) if total else 0.0
 
     pnl_eur_str = colorize(total_pnl_eur, f"{total_pnl_eur:.2f} EUR")
-    pnl_usd_str = colorize(total_pnl_usd, f"{total_pnl_usd:.2f} USD")
 
     print("==============================")
     print("GESAMT (EUR)")
@@ -57,29 +58,49 @@ def print_summary_only(closed_trades):
     print(f"Verlusttrades         : {losses}")
     print(f"Trefferquote          : {hit:.2f} %")
     print(f"Gesamt P/L            : {pnl_eur_str}")
-    print(f"(Info USD             : {pnl_usd_str})")
+
+    if native_currency != BASE_CURRENCY:
+        print(
+            f"Handelsergebnis ({native_currency}): "
+            f"{colorize(total_pnl_native, f'{total_pnl_native:.2f} {native_currency}')}"
+        )
+
     print("==============================\n")
 
 
 # ---------------------------
-# RANKING
+# RANKING (NEU: FX-ANALYSE)
 # ---------------------------
 def print_ranking(results):
     print("\n====================================================")
-    print("RANKING DER BESTEN BACKTESTS (EUR)")
+    print("RANKING DER BESTEN BACKTESTS (EUR + FX ANALYSE)")
     print("====================================================")
 
     for i, r in enumerate(results, 1):
-        pnl_eur_str = colorize(r["pnl_eur"], f"{r['pnl_eur']:.2f} EUR")
-        pnl_usd_str = colorize(r["pnl"], f"{r['pnl']:.2f} USD")
+        pnl_eur = r["pnl_eur"]
+        pnl_native = r["pnl_native"]
+        currency = r["native_currency"]
+
+        pnl_eur_str = colorize(pnl_eur, f"{pnl_eur:.2f} EUR")
 
         print(
             f"{i}. {r['symbol']} | "
             f"{pnl_eur_str} "
             f"({r['pnl_pct_eur']:.2f}%) | "
-            f"Trades: {r['trade_count']} "
-            f"| USD: {pnl_usd_str}"
+            f"Trades: {r['trade_count']}"
         )
+
+        if currency != BASE_CURRENCY:
+            fx_effect = pnl_eur - (pnl_native * 1.0)  # rein zur Anzeige
+
+            print(
+                f"   Aktie ({currency}): "
+                f"{colorize(pnl_native, f'{pnl_native:.2f} {currency}')}"
+            )
+            print(
+                f"   FX-Effekt       : "
+                f"{colorize(fx_effect, f'{fx_effect:.2f} EUR')}"
+            )
 
     print("====================================================\n")
 
@@ -87,14 +108,17 @@ def print_ranking(results):
 # ---------------------------
 # EMPFEHLUNG
 # ---------------------------
-def print_recommendation(symbol, signal, price_eur, price_usd):
+def print_recommendation(symbol, signal, price_eur, price_native, native_currency):
     color = GREEN if signal == "BUY" else RED if signal == "SELL" else RESET
 
-    print(
-        f"{symbol}: {color}{signal}{RESET} @ "
-        f"{price_eur:.2f} EUR "
-        f"(Handel in USD: {price_usd:.2f})"
-    )
+    if native_currency == BASE_CURRENCY:
+        print(f"{symbol}: {color}{signal}{RESET} @ {price_eur:.2f} EUR")
+    else:
+        print(
+            f"{symbol}: {color}{signal}{RESET} @ "
+            f"{price_eur:.2f} EUR "
+            f"(Handel in {native_currency}: {price_native:.2f})"
+        )
 
 
 # ---------------------------
@@ -106,40 +130,34 @@ def print_portfolio(portfolio):
     print("------------------------------")
 
     total_eur = 0.0
-    total_usd = 0.0
 
     if not portfolio:
         print("Keine Positionen im virtuellen Depot.")
 
     for symbol, pos in portfolio.items():
         value_eur = pos["qty"] * pos["price_eur"]
-        value_usd = pos["qty"] * pos["price_usd"]
-
         total_eur += value_eur
-        total_usd += value_usd
 
-        val_eur_str = colorize(value_eur, f"{value_eur:.2f} EUR")
-        val_usd_str = colorize(value_usd, f"{value_usd:.2f} USD")
+        extra = ""
+        if pos["native_currency"] != BASE_CURRENCY:
+            value_native = pos["qty"] * pos["price_native"]
+            extra = f" | {value_native:.2f} {pos['native_currency']}"
 
         print(
             f"{symbol}: {pos['qty']} Stück | "
-            f"Wert {val_eur_str} "
-            f"(USD: {val_usd_str})"
+            f"Wert {colorize(value_eur, f'{value_eur:.2f} EUR')}"
+            f"{extra}"
         )
 
-    total_eur_str = colorize(total_eur, f"{total_eur:.2f} EUR")
-    total_usd_str = colorize(total_usd, f"{total_usd:.2f} USD")
-
     print("------------------------------")
-    print(f"Depotwert: {total_eur_str}")
-    print(f"(USD Info: {total_usd_str})")
+    print(f"Depotwert: {colorize(total_eur, f'{total_eur:.2f} EUR')}")
     print("==============================\n")
 
 
 # ---------------------------
 # TRADES
 # ---------------------------
-def print_closed_trades(symbol, company_name, isin, wkn, trades):
+def print_closed_trades(symbol, company_name, isin, wkn, trades, native_currency):
     if not trades:
         return
 
@@ -148,16 +166,22 @@ def print_closed_trades(symbol, company_name, isin, wkn, trades):
     print(f"Name            : {company_name}")
     print(f"ISIN            : {isin}")
     print(f"WKN             : {wkn}")
+    print(f"Handelswährung  : {native_currency}")
     print("------------------------------")
 
     for t in trades:
-        pnl_eur_str = colorize(t["pnl_eur"], f"{t['pnl_eur']:.2f} EUR")
-        pnl_usd_str = colorize(t["pnl"], f"{t['pnl']:.2f} USD")
+        pnl_eur = t["pnl_eur"]
+        pnl_native = t["pnl_native"]
 
         print(f"Kaufdatum       : {t['buy_time']}")
         print(f"Verkaufsdatum   : {t['sell_time']}")
-        print(f"Ergebnis        : {pnl_eur_str}")
-        print(f"(USD            : {pnl_usd_str})")
+        print(f"Ergebnis (EUR)  : {colorize(pnl_eur, f'{pnl_eur:.2f} EUR')}")
+
+        if native_currency != BASE_CURRENCY:
+            fx_effect = pnl_eur - pnl_native
+            print(f"Aktie ({native_currency}): {colorize(pnl_native, f'{pnl_native:.2f} {native_currency}')}")
+            print(f"FX-Effekt       : {colorize(fx_effect, f'{fx_effect:.2f} EUR')}")
+
         print(f"Ergebnis in %   : {t['pnl_pct_eur']:.2f} %")
         print("------------------------------")
 
