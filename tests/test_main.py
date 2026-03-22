@@ -4,11 +4,11 @@ import main
 
 def test_main_buy_flow(monkeypatch):
     df = pd.DataFrame({
-        "Open": [1]*25,
-        "High": [1]*25,
-        "Low": [1]*25,
+        "Open": [1] * 25,
+        "High": [1] * 25,
+        "Low": [1] * 25,
         "Close": list(range(1, 26)),
-        "Volume": [100]*25,
+        "Volume": [100] * 25,
     })
 
     def fake_load_data(symbol, period, interval):
@@ -26,6 +26,7 @@ def test_main_buy_flow(monkeypatch):
             self.cash = cash
             self.position = 0
             self.avg_entry = 0.0
+            self.trades = []
 
         def buy(self, price, qty, ts):
             called["buy"] = True
@@ -57,7 +58,7 @@ def test_main_buy_flow(monkeypatch):
     monkeypatch.setattr(main, "print_human", fake_print_human)
     monkeypatch.setattr(main, "print_technical", fake_print_technical)
 
-    main.main()
+    main.main("5d")
 
     assert called["buy"] is True
     assert called["sell"] is False

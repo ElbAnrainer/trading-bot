@@ -1,16 +1,20 @@
 import json
 import os
+
 from config import STATE_FILE, BROKER_FILE
 
 
 def load_json(file, default):
     if not os.path.exists(file):
         return default
-    return json.load(open(file))
+
+    with open(file, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def save_json(file, data):
-    json.dump(data, open(file, "w"), indent=2)
+    with open(file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
 
 
 def load_state():

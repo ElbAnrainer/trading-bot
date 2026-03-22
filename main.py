@@ -1,150 +1,113 @@
-from config import SYMBOL, NAME, WKN, CURRENCY, PERIOD, INTERVAL, INITIAL_CASH
+import sys
+
+from config import *
 from broker import Broker
 from data_loader import load_data
-from strategy import add_signals, normalize_signal, compute_qty
-from output import print_human, print_technical, print_closed_trades
+from strategy import *
+from output import *
 
 
-def ask_user_for_period():
-    print("\nWelchen Zeitraum möchtest du testen?")
-    print("Beispiele:")
-    print("  5d   = 5 Tage")
-    print("  1mo  = 1 Monat")
-    print("  3mo  = 3 Monate")
-    print("  6mo  = 6 Monate")
-    print("  1y   = 1 Jahr")
-    print("  2y   = 2 Jahre")
-    print("  3y   = 3 Jahre")
-    print()
-
-    period = input("Zeitraum eingeben (Enter = Standard aus config): ").strip()
-
-    if period == "":
-        return PERIOD
-
-    return period
-
-
-def choose_interval(period: str) -> str:
-    if period in ("1d", "5d", "1mo"):
-        return "5m"
-    if period in ("3mo", "6mo"):
-        return "1h"
-    if period in ("1y", "2y", "3y", "5y", "max"):
-        return "1d"
-
-    return INTERVAL
-
-
-def main(period):
-    interval = choose_interval(period)
-
-    df = load_data(SYMBOL, period, interval)
-    df = add_signals(df)
-
-    if df.empty:
-        print("\nKeine Kursdaten gefunden.")
-        print(f"Symbol   : {SYMBOL}")
-        print(f"Zeitraum : {period}")
-        print(f"Intervall: {interval}")
-        return
-
-    last = df.iloc[-1]
-    price = float(last["Close"])
-    signal = normalize_signal(int(last["signal"]))
-
-    broker = Broker(cash=INITIAL_CASH)
-    qty = compute_qty(broker.cash, price)
-
-    if signal == "BUY":
-        broker.buy(price, qty, "now")
-    elif signal == "SELL":
-        broker.sell(price, "now")
-
-    summary = broker.summary(price)
-
-    print_human(SYMBOL, NAME, WKN, signal, qty, price, summary)
-
-    print_technical(
-        {
-            "symbol": SYMBOL,
-            "signal": signal,
-            "qty": qty,
-            "price": price,
-            "summary": summary,
-            "period": period,
-            "interval": interval,
-        }
+def parse_args():
+    return (
+        "-l" in sys.argv,
+        int(sys.argv[sys.argv.index("--top") + 1]) if "--top" in sys.argv else DEFAULT_TOP_N,
+        float(sys.argv[sys.argv.index("--min-volume") + 1]) if "--min-volume" in sys.argv else DEFAULT_MIN_VOLUME
     )
 
 
-def run_backtest(period):
-    interval = choose_interval(period)
+def choose_interval(p):
+    if p in ("1d", "5d", "1mo"):
+        return "5m"
+    if p in ("3mo", "6mo"):
+        return "1h"
+    return "1d"
 
-    df = load_data(SYMBOL, period, interval)
-    df = add_signals(df).dropna().copy()
+
+def ask():
+    p = input("Zeitraum: ").strip()
+    return p if p else PERIOD
+
+
+def get_signal(symbol, period, interval):
+    df = load_data(symbol, period, interval)
+    df = add_signals(df)
 
     if df.empty:
-        print("\n==============================")
-        print("BACKTEST-ERGEBNIS")
-        print(f"{NAME} ({SYMBOL})")
-        print(f"WKN: {WKN}")
-        print("------------------------------")
-        print("Keine Daten für den gewählten Zeitraum vorhanden.")
-        print(f"Zeitraum: {period}")
-        print(f"Intervall: {interval}")
-        print("==============================\n")
-        return
+        return None, None
 
-    broker = Broker(cash=INITIAL_CASH)
-    prev_signal = 0
+    last = df.iloc[-1]
+    return normalize_signal(int(last["signal"])), float(last["Close"])
 
-    for idx, row in df.iterrows():
-        price = float(row["Close"])
-        signal_value = int(row["signal"])
+
+def backtest(symbol, period, interval):
+    df = load_data(symbol, period, interval)
+    df = add_signals(df).dropna()
+
+    if df.empty:
+        return None
+
+    broker = Broker(INITIAL_CASH)
+    prev = 0
+
+    for i, r in df.iterrows():
+        price = float(r["Close"])
+        sig = int(r["signal"])
         qty = compute_qty(broker.cash, price)
-        ts = str(idx)
 
-        if signal_value != prev_signal:
-            if signal_value == 1 and broker.position == 0:
-                broker.buy(price, qty, ts)
-            elif signal_value == -1 and broker.position > 0:
-                broker.sell(price, ts)
+        if sig != prev:
+            if sig == 1 and broker.position == 0:
+                broker.buy(price, qty, str(i))
+            elif sig == -1 and broker.position > 0:
+                broker.sell(price, str(i))
 
-        prev_signal = signal_value
+        prev = sig
 
-    last_price = float(df.iloc[-1]["Close"])
-    summary = broker.summary(last_price)
-    pnl = summary["equity"] - INITIAL_CASH
-    pnl_pct = (pnl / INITIAL_CASH) * 100
+    last = float(df.iloc[-1]["Close"])
+    s = broker.summary(last)
 
-    print("\n==============================")
-    print("BACKTEST-ERGEBNIS")
-    print(f"{NAME} ({SYMBOL})")
-    print(f"WKN: {WKN}")
-    print("------------------------------")
-    print(f"Zeitraum: {period}")
-    print(f"Intervall: {interval}")
-    print(f"Cash: {summary['cash']:.2f} {CURRENCY}")
-    print(f"Bestand: {summary['position']}")
-    print(f"Ø Einstieg: {summary['avg_entry']:.2f} {CURRENCY}")
-    print(f"Depotwert: {summary['equity']:.2f} {CURRENCY}")
-    print(f"Ergebnis: {pnl:.2f} {CURRENCY} ({pnl_pct:.2f}%)")
-    print(f"Trades: {len(broker.trades)}")
-    print("==============================\n")
+    pnl = s["equity"] - INITIAL_CASH
+    pnl_pct = pnl / INITIAL_CASH * 100
 
-    print_closed_trades(NAME, SYMBOL, WKN, CURRENCY, broker.closed_trades)
-
-    if broker.trades:
-        print("LETZTE ROH-TRADES")
-        for trade in broker.trades[-5:]:
-            print(trade)
-    else:
-        print("Keine Trades im Backtest.")
+    return {
+        "symbol": symbol,
+        "pnl": pnl,
+        "pnl_pct": pnl_pct,
+        "trade_count": len(s["closed_trades"]),
+        "closed_trades": s["closed_trades"],
+        "last_price": last,
+    }
 
 
 if __name__ == "__main__":
-    selected_period = ask_user_for_period()
-    main(selected_period)
-    print()
-    run_backtest(selected_period)
+    long, top, min_vol = parse_args()
+    period = ask()
+    interval = choose_interval(period)
+
+    results = []
+    portfolio = {}
+
+    for s in SYMBOLS[:top]:
+        signal, price = get_signal(s, period, interval)
+        if signal:
+            print_recommendation(s, signal, price)
+
+        r = backtest(s, period, interval)
+        if not r:
+            continue
+
+        print_summary_only(CURRENCY, r["closed_trades"])
+
+        if long:
+            print_closed_trades(s, CURRENCY, r["closed_trades"])
+
+        if signal == "BUY":
+            portfolio[s] = {"qty": 10, "price": price}
+        elif signal == "SELL" and s in portfolio:
+            del portfolio[s]
+
+        results.append(r)
+
+    results.sort(key=lambda x: x["pnl"], reverse=True)
+
+    print_ranking(results, CURRENCY)
+    print_portfolio(portfolio, CURRENCY)
