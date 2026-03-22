@@ -1,3 +1,4 @@
+import sys
 import pandas as pd
 
 import main
@@ -10,6 +11,24 @@ def test_choose_interval():
     assert main.choose_interval("3mo") == "1h"
     assert main.choose_interval("1y") == "1d"
     assert main.choose_interval("3y") == "1d"
+
+
+def test_normalize_period_input():
+    assert main.normalize_period_input("1t") == "1d"
+    assert main.normalize_period_input("1w") == "5d"
+    assert main.normalize_period_input("1m") == "1mo"
+    assert main.normalize_period_input("1j") == "1y"
+    assert main.normalize_period_input("3j") == "3y"
+
+
+def test_parse_args_period(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["main.py", "-l", "--top", "5", "--min-volume", "1000000", "--period", "1j"])
+    long_mode, top_n, min_volume, period_override = main.parse_args()
+
+    assert long_mode is True
+    assert top_n == 5
+    assert min_volume == 1000000.0
+    assert period_override == "1y"
 
 
 def test_get_signal_with_mocked_data(monkeypatch):

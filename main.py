@@ -6,6 +6,7 @@ from config import (
     DEFAULT_TOP_N,
     DEFAULT_MIN_VOLUME,
     COOLDOWN_BARS,
+    REPORTS_DIR,
 )
 from broker import Broker
 from data_loader import (
@@ -35,6 +36,7 @@ from output import (
     print_financial_overview,
     print_equity_curve_terminal,
 )
+from report_writer import save_run_outputs
 
 
 def parse_args():
@@ -43,6 +45,7 @@ def parse_args():
     long_mode = "-l" in args
     top_n = DEFAULT_TOP_N
     min_volume = DEFAULT_MIN_VOLUME
+    period_override = None
 
     i = 0
     while i < len(args):
@@ -54,9 +57,13 @@ def parse_args():
             min_volume = float(args[i + 1])
             i += 2
             continue
+        if args[i] == "--period" and i + 1 < len(args):
+            period_override = normalize_period_input(args[i + 1])
+            i += 2
+            continue
         i += 1
 
-    return long_mode, top_n, min_volume
+    return long_mode, top_n, min_volume, period_override
 
 
 def choose_interval(period):
@@ -67,6 +74,34 @@ def choose_interval(period):
     if period in ("1y", "2y", "3y", "5y", "max"):
         return "1d"
     return "1d"
+
+
+def normalize_period_input(user_input):
+    user_input = (user_input or "").strip().lower()
+
+    mapping = {
+        "1t": "1d",
+        "1w": "5d",
+        "1m": "1mo",
+        "3m": "3mo",
+        "6m": "6mo",
+        "1j": "1y",
+        "2j": "2y",
+        "3j": "3y",
+        "1d": "1d",
+        "5d": "5d",
+        "1mo": "1mo",
+        "3mo": "3mo",
+        "6mo": "6mo",
+        "1y": "1y",
+        "2y": "2y",
+        "3y": "3y",
+    }
+
+    if user_input == "":
+        return PERIOD
+
+    return mapping.get(user_input, user_input)
 
 
 def ask():
@@ -82,25 +117,7 @@ def ask():
     print()
 
     user_input = input("-> ").strip().lower()
-
-    mapping = {
-        "1t": "1d",
-        "1w": "5d",
-        "1m": "1mo",
-        "3m": "3mo",
-        "6m": "6mo",
-        "1j": "1y",
-        "2j": "2y",
-        "3j": "3y",
-        "1y": "1y",
-        "2y": "2y",
-        "3y": "3y",
-    }
-
-    if user_input == "":
-        return PERIOD
-
-    return mapping.get(user_input, user_input)
+    return normalize_period_input(user_input)
 
 
 def get_signal(symbol, period, interval, rate_to_eur_latest):
@@ -194,9 +211,7 @@ def backtest(symbol, period, interval, native_currency, fx_df, rate_to_eur_lates
     }
 
 
-if __name__ == "__main__":
-    long_mode, top_n, min_volume = parse_args()
-    period = ask()
+def run(period, top_n, min_volume, long_mode):
     interval = choose_interval(period)
 
     all_symbols = fetch_dynamic_universe()
@@ -257,6 +272,11 @@ if __name__ == "__main__":
         if not result:
             continue
 
+        result["company_name"] = meta.get("name", symbol)
+        result["isin"] = meta.get("isin", "-")
+        result["wkn"] = meta.get("wkn", "-")
+        result["signal"] = signal or "HOLD"
+
         print_financial_overview(
             result["initial_cash_eur"],
             result["current_equity_eur"],
@@ -269,9 +289,9 @@ if __name__ == "__main__":
         if long_mode:
             print_closed_trades(
                 symbol,
-                meta.get("name", symbol),
-                meta.get("isin", "-"),
-                meta.get("wkn", "-"),
+                result["company_name"],
+                result["isin"],
+                result["wkn"],
                 result["closed_trades"],
                 result["native_currency"],
             )
@@ -293,3 +313,24 @@ if __name__ == "__main__":
 
     print_ranking(results)
     print_portfolio(portfolio)
+
+    save_run_outputs(
+        output_dir=REPORTS_DIR,
+        period=period,
+        interval=interval,
+        results=results,
+        portfolio=portfolio,
+    )
+
+    return {
+        "period": period,
+        "interval": interval,
+        "results": results,
+        "portfolio": portfolio,
+    }
+
+
+if __name__ == "__main__":
+    long_mode, top_n, min_volume, period_override = parse_args()
+    period = period_override or ask()
+    run(period, top_n, min_volume, long_mode)

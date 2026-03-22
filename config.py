@@ -16,9 +16,9 @@ PERIOD = "1mo"
 INITIAL_CASH_EUR = 10000.0
 
 # Kosten
-BROKER_FEE_NATIVE = 1.0   # Brokergebühr je Trade in Handelswährung
+BROKER_FEE_NATIVE = 1.0
 SLIPPAGE_PCT = 0.0005
-FX_FEE_PCT = 0.0025       # 0.25% Wechselkosten
+FX_FEE_PCT = 0.0025
 
 # Risiko / Money Management
 RISK_PER_TRADE_PCT = 0.01
@@ -45,6 +45,9 @@ BROKER_FILE = "broker_state.json"
 # CLI Defaults
 DEFAULT_TOP_N = 3
 DEFAULT_MIN_VOLUME = 5_000_000
+
+# Reports
+REPORTS_DIR = "reports"
 
 # Fallbacks, falls FX-Daten temporär fehlen
 FX_FALLBACK_RATES_TO_EUR = {
