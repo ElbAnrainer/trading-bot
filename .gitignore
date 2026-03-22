@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 .env
+
+y
+y.pub
+*.pem
+*.key
