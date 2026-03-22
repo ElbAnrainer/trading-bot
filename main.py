@@ -1,113 +1,295 @@
 import sys
 
-from config import *
+from config import (
+    PERIOD,
+    INITIAL_CASH_EUR,
+    DEFAULT_TOP_N,
+    DEFAULT_MIN_VOLUME,
+    COOLDOWN_BARS,
+)
 from broker import Broker
-from data_loader import load_data
-from strategy import *
-from output import *
+from data_loader import (
+    load_data,
+    load_data_batch,
+    load_fx_to_eur_data,
+    latest_rate_to_eur,
+    fx_rate_to_eur_at,
+    fallback_rate_to_eur,
+    load_ticker_metadata,
+    fetch_dynamic_universe,
+)
+from strategy import (
+    add_signals,
+    compute_qty,
+    normalize_signal_from_row,
+    analyze_symbol,
+    stop_loss_price,
+    take_profit_price,
+)
+from output import (
+    print_summary_only,
+    print_ranking,
+    print_closed_trades,
+    print_recommendation,
+    print_portfolio,
+    print_financial_overview,
+    print_equity_curve_terminal,
+)
 
 
 def parse_args():
-    return (
-        "-l" in sys.argv,
-        int(sys.argv[sys.argv.index("--top") + 1]) if "--top" in sys.argv else DEFAULT_TOP_N,
-        float(sys.argv[sys.argv.index("--min-volume") + 1]) if "--min-volume" in sys.argv else DEFAULT_MIN_VOLUME
-    )
+    args = sys.argv[1:]
+
+    long_mode = "-l" in args
+    top_n = DEFAULT_TOP_N
+    min_volume = DEFAULT_MIN_VOLUME
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--top" and i + 1 < len(args):
+            top_n = int(args[i + 1])
+            i += 2
+            continue
+        if args[i] == "--min-volume" and i + 1 < len(args):
+            min_volume = float(args[i + 1])
+            i += 2
+            continue
+        i += 1
+
+    return long_mode, top_n, min_volume
 
 
-def choose_interval(p):
-    if p in ("1d", "5d", "1mo"):
+def choose_interval(period):
+    if period in ("1d", "5d", "1mo"):
         return "5m"
-    if p in ("3mo", "6mo"):
+    if period in ("3mo", "6mo"):
         return "1h"
+    if period in ("1y", "2y", "3y", "5y", "max"):
+        return "1d"
     return "1d"
 
 
 def ask():
-    p = input("Zeitraum: ").strip()
-    return p if p else PERIOD
+    print("\nZeitraum wählen:")
+    print("  1t  = 1 Tag")
+    print("  1w  = 1 Woche")
+    print("  1m  = 1 Monat")
+    print("  3m  = 3 Monate")
+    print("  6m  = 6 Monate")
+    print("  1j  = 1 Jahr")
+    print("  2j  = 2 Jahre")
+    print("  3j  = 3 Jahre")
+    print()
+
+    user_input = input("-> ").strip().lower()
+
+    mapping = {
+        "1t": "1d",
+        "1w": "5d",
+        "1m": "1mo",
+        "3m": "3mo",
+        "6m": "6mo",
+        "1j": "1y",
+        "2j": "2y",
+        "3j": "3y",
+        "1y": "1y",
+        "2y": "2y",
+        "3y": "3y",
+    }
+
+    if user_input == "":
+        return PERIOD
+
+    return mapping.get(user_input, user_input)
 
 
-def get_signal(symbol, period, interval):
+def get_signal(symbol, period, interval, rate_to_eur_latest):
     df = load_data(symbol, period, interval)
     df = add_signals(df)
 
     if df.empty:
-        return None, None
+        return None, None, None
 
     last = df.iloc[-1]
-    return normalize_signal(int(last["signal"])), float(last["Close"])
+    signal = normalize_signal_from_row(last)
+    price_native = float(last["Close"])
+    price_eur = price_native * rate_to_eur_latest
+
+    return signal, price_eur, price_native
 
 
-def backtest(symbol, period, interval):
+def backtest(symbol, period, interval, native_currency, fx_df, rate_to_eur_latest):
     df = load_data(symbol, period, interval)
     df = add_signals(df).dropna()
 
     if df.empty:
         return None
 
-    broker = Broker(INITIAL_CASH)
-    prev = 0
+    broker = Broker(INITIAL_CASH_EUR)
+    equity_curve = []
+    cooldown = 0
 
-    for i, r in df.iterrows():
-        price = float(r["Close"])
-        sig = int(r["signal"])
-        qty = compute_qty(broker.cash, price)
+    for i, row in df.iterrows():
+        price_native = float(row["Close"])
+        ts = str(i)
+        rate_to_eur = fx_rate_to_eur_at(ts, fx_df, rate_to_eur_latest)
 
-        if sig != prev:
-            if sig == 1 and broker.position == 0:
-                broker.buy(price, qty, str(i))
-            elif sig == -1 and broker.position > 0:
-                broker.sell(price, str(i))
+        if broker.position > 0 and broker.open_trade is not None:
+            entry = broker.open_trade["buy_price_native"]
+            sl = stop_loss_price(entry)
+            tp = take_profit_price(entry)
 
-        prev = sig
+            if price_native <= sl:
+                broker.sell(price_native, ts, rate_to_eur, reason="STOP_LOSS")
+                cooldown = COOLDOWN_BARS
+            elif price_native >= tp:
+                broker.sell(price_native, ts, rate_to_eur, reason="TAKE_PROFIT")
+                cooldown = COOLDOWN_BARS
+            elif bool(row["sell_signal"]):
+                broker.sell(price_native, ts, rate_to_eur, reason="SIGNAL")
+                cooldown = COOLDOWN_BARS
 
-    last = float(df.iloc[-1]["Close"])
-    s = broker.summary(last)
+        if broker.position == 0:
+            if cooldown > 0:
+                cooldown -= 1
+            else:
+                if bool(row["buy_signal"]):
+                    qty = compute_qty(broker.cash_eur, price_native * rate_to_eur)
+                    if qty > 0:
+                        broker.buy(price_native, qty, ts, rate_to_eur, native_currency)
 
-    pnl = s["equity"] - INITIAL_CASH
-    pnl_pct = pnl / INITIAL_CASH * 100
+        summary_now = broker.summary(price_native, rate_to_eur)
+        equity_curve.append(
+            {
+                "time": ts,
+                "equity_eur": summary_now["equity_eur"],
+            }
+        )
+
+    last_price_native = float(df.iloc[-1]["Close"])
+    end_rate = rate_to_eur_latest
+    summary = broker.summary(last_price_native, end_rate)
+
+    current_equity_eur = summary["equity_eur"]
+    pnl_eur = current_equity_eur - INITIAL_CASH_EUR
+    pnl_pct_eur = (pnl_eur / INITIAL_CASH_EUR * 100) if INITIAL_CASH_EUR else 0.0
+
+    pnl_native = 0.0
+    if end_rate > 0:
+        pnl_native = pnl_eur / end_rate
 
     return {
         "symbol": symbol,
-        "pnl": pnl,
-        "pnl_pct": pnl_pct,
-        "trade_count": len(s["closed_trades"]),
-        "closed_trades": s["closed_trades"],
-        "last_price": last,
+        "native_currency": native_currency,
+        "pnl_eur": pnl_eur,
+        "pnl_native": pnl_native,
+        "pnl_pct_eur": pnl_pct_eur,
+        "trade_count": len(summary["closed_trades"]),
+        "closed_trades": summary["closed_trades"],
+        "last_price_native": last_price_native,
+        "last_price_eur": last_price_native * end_rate,
+        "initial_cash_eur": INITIAL_CASH_EUR,
+        "current_equity_eur": current_equity_eur,
+        "equity_curve": equity_curve,
     }
 
 
 if __name__ == "__main__":
-    long, top, min_vol = parse_args()
+    long_mode, top_n, min_volume = parse_args()
     period = ask()
     interval = choose_interval(period)
 
+    all_symbols = fetch_dynamic_universe()
+    batch_data = load_data_batch(all_symbols, period, interval, chunk_size=25, pause_seconds=1.0)
+
+    screened = []
+    for symbol, df in batch_data.items():
+        info = analyze_symbol(df, symbol)
+        if info and info["avg_volume"] >= min_volume and info["is_candidate"]:
+            screened.append(info)
+
+    screened.sort(key=lambda x: x["score"], reverse=True)
+    selected_symbols = [x["symbol"] for x in screened[:top_n]]
+
     results = []
     portfolio = {}
+    metadata_cache = {}
+    fx_cache = {}
 
-    for s in SYMBOLS[:top]:
-        signal, price = get_signal(s, period, interval)
-        if signal:
-            print_recommendation(s, signal, price)
+    for symbol in selected_symbols:
+        if symbol not in metadata_cache:
+            metadata_cache[symbol] = load_ticker_metadata(symbol)
 
-        r = backtest(s, period, interval)
-        if not r:
+        meta = metadata_cache[symbol]
+        native_currency = meta.get("currency", "USD")
+
+        if native_currency not in fx_cache:
+            fx_df = load_fx_to_eur_data(native_currency, period, interval)
+            fx_cache[native_currency] = {
+                "df": fx_df,
+                "latest": latest_rate_to_eur(
+                    fx_df,
+                    fallback_rate_to_eur(native_currency),
+                ),
+            }
+
+        fx_df = fx_cache[native_currency]["df"]
+        rate_to_eur_latest = fx_cache[native_currency]["latest"]
+
+        signal, price_eur, price_native = get_signal(
+            symbol,
+            period,
+            interval,
+            rate_to_eur_latest,
+        )
+
+        if signal and price_eur is not None and price_native is not None:
+            print_recommendation(symbol, signal, price_eur, price_native, native_currency)
+
+        result = backtest(
+            symbol,
+            period,
+            interval,
+            native_currency,
+            fx_df,
+            rate_to_eur_latest,
+        )
+        if not result:
             continue
 
-        print_summary_only(CURRENCY, r["closed_trades"])
+        print_financial_overview(
+            result["initial_cash_eur"],
+            result["current_equity_eur"],
+            result["pnl_eur"],
+            result["native_currency"],
+            result["pnl_native"],
+        )
+        print_summary_only(result["closed_trades"], result["native_currency"])
 
-        if long:
-            print_closed_trades(s, CURRENCY, r["closed_trades"])
+        if long_mode:
+            print_closed_trades(
+                symbol,
+                meta.get("name", symbol),
+                meta.get("isin", "-"),
+                meta.get("wkn", "-"),
+                result["closed_trades"],
+                result["native_currency"],
+            )
+            print_equity_curve_terminal(symbol, result["equity_curve"])
 
-        if signal == "BUY":
-            portfolio[s] = {"qty": 10, "price": price}
-        elif signal == "SELL" and s in portfolio:
-            del portfolio[s]
+        if signal == "BUY" and price_eur is not None and price_native is not None:
+            portfolio[symbol] = {
+                "qty": 10,
+                "price_eur": price_eur,
+                "price_native": price_native,
+                "native_currency": native_currency,
+            }
+        elif signal == "SELL" and symbol in portfolio:
+            del portfolio[symbol]
 
-        results.append(r)
+        results.append(result)
 
-    results.sort(key=lambda x: x["pnl"], reverse=True)
+    results.sort(key=lambda x: x["pnl_eur"], reverse=True)
 
-    print_ranking(results, CURRENCY)
-    print_portfolio(portfolio, CURRENCY)
+    print_ranking(results)
+    print_portfolio(portfolio)
