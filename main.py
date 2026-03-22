@@ -2,7 +2,7 @@ from config import SYMBOL, NAME, WKN, CURRENCY, PERIOD, INTERVAL, INITIAL_CASH
 from broker import Broker
 from data_loader import load_data
 from strategy import add_signals, normalize_signal, compute_qty
-from output import print_human, print_technical
+from output import print_human, print_technical, print_closed_trades
 
 
 def ask_user_for_period():
@@ -26,10 +26,6 @@ def ask_user_for_period():
 
 
 def choose_interval(period: str) -> str:
-    """
-    Yahoo Finance kann 5m-Daten nicht beliebig weit zurück liefern.
-    Deshalb wählen wir das Intervall passend zum Zeitraum.
-    """
     if period in ("1d", "5d", "1mo"):
         return "5m"
     if period in ("3mo", "6mo"):
@@ -58,7 +54,6 @@ def main(period):
     signal = normalize_signal(int(last["signal"]))
 
     broker = Broker(cash=INITIAL_CASH)
-
     qty = compute_qty(broker.cash, price)
 
     if signal == "BUY":
@@ -108,12 +103,13 @@ def run_backtest(period):
         price = float(row["Close"])
         signal_value = int(row["signal"])
         qty = compute_qty(broker.cash, price)
+        ts = str(idx)
 
         if signal_value != prev_signal:
             if signal_value == 1 and broker.position == 0:
-                broker.buy(price, qty, str(idx))
+                broker.buy(price, qty, ts)
             elif signal_value == -1 and broker.position > 0:
-                broker.sell(price, str(idx))
+                broker.sell(price, ts)
 
         prev_signal = signal_value
 
@@ -137,8 +133,10 @@ def run_backtest(period):
     print(f"Trades: {len(broker.trades)}")
     print("==============================\n")
 
+    print_closed_trades(NAME, SYMBOL, WKN, CURRENCY, broker.closed_trades)
+
     if broker.trades:
-        print("LETZTE TRADES")
+        print("LETZTE ROH-TRADES")
         for trade in broker.trades[-5:]:
             print(trade)
     else:
