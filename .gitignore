@@ -1,13 +1,5 @@
+state.json
+broker_state.json
 __pycache__/
-*.pyc
-.env
-
-y
-y.pub
-*.pem
-*.key
-
-y
-y.pub
-*.pem
-*.key
+.pytest_cache/
+.venv/
