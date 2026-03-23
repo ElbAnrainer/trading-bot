@@ -1,131 +1,48 @@
-import sys
-
+from cli import choose_interval
 from config import (
-    PERIOD,
-    INITIAL_CASH_EUR,
-    DEFAULT_TOP_N,
-    DEFAULT_MIN_VOLUME,
-    COOLDOWN_BARS,
-    REPORTS_DIR,
-    RECOMMENDATION_TOP_N,
     BENCHMARK_SYMBOL,
+    COOLDOWN_BARS,
+    INITIAL_CASH_EUR,
+    RECOMMENDATION_TOP_N,
+    REPORTS_DIR,
 )
 from broker import Broker
 from data_loader import (
+    fallback_rate_to_eur,
+    fetch_dynamic_universe,
+    fx_rate_to_eur_at,
+    latest_rate_to_eur,
     load_data,
     load_data_batch,
     load_fx_to_eur_data,
-    latest_rate_to_eur,
-    fx_rate_to_eur_at,
-    fallback_rate_to_eur,
     load_ticker_metadata,
-    fetch_dynamic_universe,
 )
+from output import (
+    print_buy_blockers_summary,
+    print_buy_overview,
+    print_closed_trades,
+    print_diagnostics,
+    print_equity_curve_terminal,
+    print_financial_overview,
+    print_future_candidates,
+    print_portfolio,
+    print_ranking,
+    print_recommendation,
+    print_summary_only,
+)
+from report_writer import save_run_outputs
 from strategy import (
     add_signals,
+    analyze_symbol,
     compute_qty,
     normalize_signal_from_row,
-    analyze_symbol,
     stop_loss_price,
     take_profit_price,
 )
-from output import (
-    print_summary_only,
-    print_ranking,
-    print_closed_trades,
-    print_recommendation,
-    print_portfolio,
-    print_financial_overview,
-    print_equity_curve_terminal,
-    print_future_candidates,
-)
-from report_writer import save_run_outputs
-
-
-def parse_args():
-    args = sys.argv[1:]
-
-    long_mode = "-l" in args
-    top_n = DEFAULT_TOP_N
-    min_volume = DEFAULT_MIN_VOLUME
-    period_override = None
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--top" and i + 1 < len(args):
-            top_n = int(args[i + 1])
-            i += 2
-            continue
-        if args[i] == "--min-volume" and i + 1 < len(args):
-            min_volume = float(args[i + 1])
-            i += 2
-            continue
-        if args[i] == "--period" and i + 1 < len(args):
-            period_override = normalize_period_input(args[i + 1])
-            i += 2
-            continue
-        i += 1
-
-    return long_mode, top_n, min_volume, period_override
-
-
-def choose_interval(period):
-    if period in ("1d", "5d", "1mo"):
-        return "5m"
-    if period in ("3mo", "6mo"):
-        return "1h"
-    if period in ("1y", "2y", "3y", "5y", "max"):
-        return "1d"
-    return "1d"
-
-
-def normalize_period_input(user_input):
-    user_input = (user_input or "").strip().lower()
-
-    mapping = {
-        "1t": "1d",
-        "1w": "5d",
-        "1m": "1mo",
-        "3m": "3mo",
-        "6m": "6mo",
-        "1j": "1y",
-        "2j": "2y",
-        "3j": "3y",
-        "1d": "1d",
-        "5d": "5d",
-        "1mo": "1mo",
-        "3mo": "3mo",
-        "6mo": "6mo",
-        "1y": "1y",
-        "2y": "2y",
-        "3y": "3y",
-    }
-
-    if user_input == "":
-        return PERIOD
-
-    return mapping.get(user_input, user_input)
-
-
-def ask():
-    print("\nZeitraum wählen:")
-    print("  1t  = 1 Tag")
-    print("  1w  = 1 Woche")
-    print("  1m  = 1 Monat")
-    print("  3m  = 3 Monate")
-    print("  6m  = 6 Monate")
-    print("  1j  = 1 Jahr")
-    print("  2j  = 2 Jahre")
-    print("  3j  = 3 Jahre")
-    print()
-
-    user_input = input("-> ").strip().lower()
-    return normalize_period_input(user_input)
 
 
 def get_signal_from_df(df, rate_to_eur_latest):
     df = add_signals(df)
-
     if df.empty:
         return None, None, None
 
@@ -133,13 +50,11 @@ def get_signal_from_df(df, rate_to_eur_latest):
     signal = normalize_signal_from_row(last)
     price_native = float(last["Close"])
     price_eur = price_native * rate_to_eur_latest
-
     return signal, price_eur, price_native
 
 
 def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest):
     df = add_signals(df).dropna()
-
     if df.empty:
         return None
 
@@ -170,31 +85,20 @@ def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest):
         if broker.position == 0:
             if cooldown > 0:
                 cooldown -= 1
-            else:
-                if bool(row["buy_signal"]):
-                    qty = compute_qty(broker.cash_eur, price_native * rate_to_eur)
-                    if qty > 0:
-                        broker.buy(price_native, qty, ts, rate_to_eur, native_currency)
+            elif bool(row["buy_signal"]):
+                qty = compute_qty(broker.cash_eur, price_native * rate_to_eur)
+                if qty > 0:
+                    broker.buy(price_native, qty, ts, rate_to_eur, native_currency)
 
         summary_now = broker.summary(price_native, rate_to_eur)
-        equity_curve.append(
-            {
-                "time": ts,
-                "equity_eur": summary_now["equity_eur"],
-            }
-        )
+        equity_curve.append({"time": ts, "equity_eur": summary_now["equity_eur"]})
 
     last_price_native = float(df.iloc[-1]["Close"])
-    end_rate = rate_to_eur_latest
-    summary = broker.summary(last_price_native, end_rate)
-
+    summary = broker.summary(last_price_native, rate_to_eur_latest)
     current_equity_eur = summary["equity_eur"]
     pnl_eur = current_equity_eur - INITIAL_CASH_EUR
     pnl_pct_eur = (pnl_eur / INITIAL_CASH_EUR * 100) if INITIAL_CASH_EUR else 0.0
-
-    pnl_native = 0.0
-    if end_rate > 0:
-        pnl_native = pnl_eur / end_rate
+    pnl_native = pnl_eur / rate_to_eur_latest if rate_to_eur_latest > 0 else 0.0
 
     return {
         "native_currency": native_currency,
@@ -204,7 +108,7 @@ def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest):
         "trade_count": len(summary["closed_trades"]),
         "closed_trades": summary["closed_trades"],
         "last_price_native": last_price_native,
-        "last_price_eur": last_price_native * end_rate,
+        "last_price_eur": last_price_native * rate_to_eur_latest,
         "initial_cash_eur": INITIAL_CASH_EUR,
         "current_equity_eur": current_equity_eur,
         "equity_curve": equity_curve,
@@ -212,42 +116,62 @@ def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest):
 
 
 def build_future_candidates(analyzed, top_n):
-    future = sorted(analyzed, key=lambda x: x["score"], reverse=True)
-    return future[:top_n]
+    return sorted(analyzed, key=lambda x: x["score"], reverse=True)[:top_n]
 
 
-def run(period, top_n, min_volume, long_mode):
+def collect_buy_blockers(analyzed):
+    blockers = {
+        "Trend fehlt": 0,
+        "Breakout fehlt": 0,
+        "Momentum fehlt": 0,
+        "Volatilität fehlt": 0,
+        "Relative Stärke fehlt": 0,
+        "Fundamental schwach": 0,
+        "Score zu niedrig": 0,
+    }
+
+    for item in analyzed:
+        if item.get("future_signal") == "BUY":
+            continue
+        if not item.get("trend_ok", False):
+            blockers["Trend fehlt"] += 1
+        if not item.get("breakout_ok", False):
+            blockers["Breakout fehlt"] += 1
+        if not item.get("momentum_ok", False):
+            blockers["Momentum fehlt"] += 1
+        if not item.get("volatility_ok", False):
+            blockers["Volatilität fehlt"] += 1
+        if not item.get("relative_strength_ok", False):
+            blockers["Relative Stärke fehlt"] += 1
+        if item.get("fundamental_score", 0) < 2:
+            blockers["Fundamental schwach"] += 1
+        if item.get("score", 0) < 40:
+            blockers["Score zu niedrig"] += 1
+
+    return blockers
+
+
+def run_analysis(period, top_n, min_volume, long_mode):
     interval = choose_interval(period)
-
     all_symbols = fetch_dynamic_universe()
-    batch_data = load_data_batch(all_symbols, period, interval, chunk_size=25, pause_seconds=1.0)
+    batch_data = load_data_batch(all_symbols, period, interval, chunk_size=25, pause_seconds=0.2)
     benchmark_df = load_data(BENCHMARK_SYMBOL, period, interval)
 
     analyzed = []
-    metadata_cache = {}
-
     for symbol, df in batch_data.items():
-        metadata_cache[symbol] = load_ticker_metadata(symbol)
-        fundamentals = metadata_cache[symbol].get("fundamentals", {})
-
-        info = analyze_symbol(
-            df=df,
-            symbol=symbol,
-            benchmark_df=benchmark_df,
-            fundamentals=fundamentals,
-        )
-
-        if info and info["avg_volume"] >= min_volume:
-            analyzed.append(info)
+        info = analyze_symbol(df=df, symbol=symbol, benchmark_df=benchmark_df, fundamentals={})
+        if info:
+            if long_mode:
+                print_diagnostics(info)
+            if info["avg_volume"] >= min_volume:
+                analyzed.append(info)
 
     future_candidates = build_future_candidates(analyzed, RECOMMENDATION_TOP_N)
     print_future_candidates(future_candidates)
+    print_buy_blockers_summary(collect_buy_blockers(analyzed))
 
-    screened = [x for x in analyzed if x["is_candidate"]]
-    screened.sort(key=lambda x: x["score"], reverse=True)
-
+    screened = sorted([x for x in analyzed if x["is_candidate"]], key=lambda x: x["score"], reverse=True)
     fallback_used = False
-
     if not screened:
         fallback_used = True
         screened = sorted(analyzed, key=lambda x: x["score"], reverse=True)
@@ -262,13 +186,8 @@ def run(period, top_n, min_volume, long_mode):
         print("\nKeine auswertbaren Aktien gefunden.\n")
         print_ranking([])
         print_portfolio({})
-        save_run_outputs(
-            output_dir=REPORTS_DIR,
-            period=period,
-            interval=interval,
-            results=[],
-            portfolio={},
-        )
+        print_buy_overview(future_candidates)
+        save_run_outputs(output_dir=REPORTS_DIR, period=period, interval=interval, results=[], portfolio={})
         return {
             "period": period,
             "interval": interval,
@@ -280,50 +199,43 @@ def run(period, top_n, min_volume, long_mode):
     results = []
     portfolio = {}
     fx_cache = {}
+    metadata_cache = {}
 
     for symbol in selected_symbols:
         df = batch_data.get(symbol)
         if df is None or df.empty:
             continue
 
-        meta = metadata_cache.get(symbol) or load_ticker_metadata(symbol)
+        if symbol not in metadata_cache:
+            metadata_cache[symbol] = load_ticker_metadata(symbol)
+        meta = metadata_cache[symbol]
         native_currency = meta.get("currency", "USD")
 
         if native_currency not in fx_cache:
             fx_df = load_fx_to_eur_data(native_currency, period, interval)
             fx_cache[native_currency] = {
                 "df": fx_df,
-                "latest": latest_rate_to_eur(
-                    fx_df,
-                    fallback_rate_to_eur(native_currency),
-                ),
+                "latest": latest_rate_to_eur(fx_df, fallback_rate_to_eur(native_currency)),
             }
 
         fx_df = fx_cache[native_currency]["df"]
         rate_to_eur_latest = fx_cache[native_currency]["latest"]
-
-        signal, price_eur, price_native = get_signal_from_df(
-            df,
-            rate_to_eur_latest,
-        )
+        signal, price_eur, price_native = get_signal_from_df(df, rate_to_eur_latest)
 
         if signal and price_eur is not None and price_native is not None:
             print_recommendation(symbol, signal, price_eur, price_native, native_currency)
 
-        result = backtest_from_df(
-            df,
-            native_currency,
-            fx_df,
-            rate_to_eur_latest,
-        )
+        result = backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest)
         if not result:
             continue
 
-        result["symbol"] = symbol
-        result["company_name"] = meta.get("name", symbol)
-        result["isin"] = meta.get("isin", "-")
-        result["wkn"] = meta.get("wkn", "-")
-        result["signal"] = signal or "HOLD"
+        result.update({
+            "symbol": symbol,
+            "company_name": meta.get("name", symbol),
+            "isin": meta.get("isin", "-"),
+            "wkn": meta.get("wkn", "-"),
+            "signal": signal or "HOLD",
+        })
 
         print_financial_overview(
             result["initial_cash_eur"],
@@ -358,9 +270,9 @@ def run(period, top_n, min_volume, long_mode):
         results.append(result)
 
     results.sort(key=lambda x: x["pnl_eur"], reverse=True)
-
     print_ranking(results)
     print_portfolio(portfolio)
+    print_buy_overview(future_candidates)
 
     save_run_outputs(
         output_dir=REPORTS_DIR,
@@ -377,9 +289,3 @@ def run(period, top_n, min_volume, long_mode):
         "portfolio": portfolio,
         "future_candidates": future_candidates,
     }
-
-
-if __name__ == "__main__":
-    long_mode, top_n, min_volume, period_override = parse_args()
-    period = period_override or ask()
-    run(period, top_n, min_volume, long_mode)

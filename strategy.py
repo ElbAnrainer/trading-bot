@@ -17,6 +17,8 @@ from config import (
     MIN_ATR_PCT,
     MIN_SCORE_FOR_BUY,
     MIN_SCORE_FOR_WATCH,
+    RELATIVE_STRENGTH_LOOKBACK,
+    MIN_RELATIVE_STRENGTH_PCT,
 )
 
 
@@ -92,9 +94,6 @@ def normalize_signal_from_row(row):
 
 
 def compute_qty(cash_eur, price_eur):
-    """
-    Dynamische Positionsgröße in EUR-Basis.
-    """
     if price_eur <= 0:
         return 0
 
@@ -139,7 +138,7 @@ def _strength_label(score):
     return "niedrig"
 
 
-def _build_reason_list(last):
+def _build_reason_list(last, relative_strength_pct, fundamental_score):
     reasons = []
 
     if bool(last.get("trend_ok", False)):
@@ -150,12 +149,16 @@ def _build_reason_list(last):
         reasons.append("EMA/RSI positiv")
     if bool(last.get("volatility_ok", False)):
         reasons.append("ausreichende Volatilität")
+    if relative_strength_pct is not None and relative_strength_pct >= MIN_RELATIVE_STRENGTH_PCT:
+        reasons.append("stärker als Benchmark")
+    if fundamental_score >= 2:
+        reasons.append("einfach fundamental solide")
 
     return reasons
 
 
-def _future_recommendation(score, current_signal, trend_ok, volatility_ok):
-    if current_signal == "BUY" and trend_ok and volatility_ok and score >= MIN_SCORE_FOR_BUY:
+def _future_recommendation(score, current_signal, trend_ok, volatility_ok, relative_strength_ok):
+    if current_signal == "BUY" and trend_ok and volatility_ok and relative_strength_ok and score >= MIN_SCORE_FOR_BUY:
         return "BUY"
     if trend_ok and score >= MIN_SCORE_FOR_WATCH:
         return "WATCH"
@@ -164,8 +167,65 @@ def _future_recommendation(score, current_signal, trend_ok, volatility_ok):
     return "HOLD"
 
 
-def analyze_symbol(df, symbol):
-    if df is None or df.empty or len(df) < max(TREND_SMA, BREAKOUT_LOOKBACK, 30):
+def _calc_return_pct(close_series, lookback):
+    if close_series is None or len(close_series) <= lookback:
+        return None
+
+    current = float(close_series.iloc[-1])
+    past = float(close_series.iloc[-1 - lookback])
+
+    if past == 0:
+        return None
+
+    return ((current / past) - 1) * 100
+
+
+def _calc_relative_strength_pct(df, benchmark_df):
+    if benchmark_df is None or benchmark_df.empty:
+        return None
+
+    stock_ret = _calc_return_pct(df["Close"], RELATIVE_STRENGTH_LOOKBACK)
+    bench_ret = _calc_return_pct(benchmark_df["Close"], RELATIVE_STRENGTH_LOOKBACK)
+
+    if stock_ret is None or bench_ret is None:
+        return None
+
+    return stock_ret - bench_ret
+
+
+def _calc_fundamental_score(fundamentals):
+    if not fundamentals:
+        return 0
+
+    score = 0
+
+    earnings_growth = fundamentals.get("earnings_growth")
+    revenue_growth = fundamentals.get("revenue_growth")
+    profit_margins = fundamentals.get("profit_margins")
+    return_on_equity = fundamentals.get("return_on_equity")
+    trailing_pe = fundamentals.get("trailing_pe")
+    forward_pe = fundamentals.get("forward_pe")
+
+    if earnings_growth is not None and earnings_growth > 0:
+        score += 1
+    if revenue_growth is not None and revenue_growth > 0:
+        score += 1
+    if profit_margins is not None and profit_margins > 0:
+        score += 1
+    if return_on_equity is not None and return_on_equity > 0.10:
+        score += 1
+    if trailing_pe is not None and 0 < trailing_pe < 35:
+        score += 1
+    if forward_pe is not None and 0 < forward_pe < 30:
+        score += 1
+
+    return score
+
+
+def analyze_symbol(df, symbol, benchmark_df=None, fundamentals=None):
+    min_len = max(TREND_SMA, BREAKOUT_LOOKBACK, RELATIVE_STRENGTH_LOOKBACK + 1, 30)
+
+    if df is None or df.empty or len(df) < min_len:
         return None
 
     df = add_signals(df)
@@ -180,15 +240,24 @@ def analyze_symbol(df, symbol):
     avg_volume = float(df["Volume"].tail(20).mean())
     current_signal = normalize_signal_from_row(last)
 
+    relative_strength_pct = _calc_relative_strength_pct(df, benchmark_df)
+    relative_strength_ok = (
+        relative_strength_pct is not None and relative_strength_pct >= MIN_RELATIVE_STRENGTH_PCT
+    )
+
+    fundamental_score = _calc_fundamental_score(fundamentals or {})
+
     score = (
-        momentum * 0.45
-        + volatility * 15
+        momentum * 0.35
+        + volatility * 12
         + (10 if bool(last["trend_ok"]) else 0)
         + (8 if bool(last["breakout_ok"]) else 0)
         + (5 if bool(last["momentum_ok"]) else 0)
+        + (8 if relative_strength_ok else 0)
+        + (fundamental_score * 2.5)
     )
 
-    reasons = _build_reason_list(last)
+    reasons = _build_reason_list(last, relative_strength_pct, fundamental_score)
     risk = _risk_level(float(last["atr_pct"]), float(last["rsi"]))
     strength = _strength_label(score)
     future_signal = _future_recommendation(
@@ -196,6 +265,7 @@ def analyze_symbol(df, symbol):
         current_signal=current_signal,
         trend_ok=bool(last["trend_ok"]),
         volatility_ok=bool(last["volatility_ok"]),
+        relative_strength_ok=relative_strength_ok,
     )
 
     is_candidate = bool(last["trend_ok"]) and bool(last["volatility_ok"])
@@ -216,4 +286,7 @@ def analyze_symbol(df, symbol):
         "breakout_ok": bool(last["breakout_ok"]),
         "momentum_ok": bool(last["momentum_ok"]),
         "volatility_ok": bool(last["volatility_ok"]),
+        "relative_strength_pct": relative_strength_pct,
+        "relative_strength_ok": relative_strength_ok,
+        "fundamental_score": fundamental_score,
     }

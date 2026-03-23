@@ -24,56 +24,15 @@ def colorize_signal(signal):
     return signal
 
 
-def print_future_candidates(candidates):
-    print("\n====================================================")
-    print("TOP-KANDIDATEN FÜR DIE ZUKUNFT")
-    print("====================================================")
-
-    if not candidates:
-        print("Keine Kandidaten gefunden.")
-        print("====================================================\n")
-        return
-
-    for idx, item in enumerate(candidates, start=1):
-        reasons = ", ".join(item.get("reasons", [])) if item.get("reasons") else "keine klare Begründung"
-
-        print(
-            f"{idx}. {item['symbol']} | "
-            f"Signal: {colorize_signal(item['future_signal'])} | "
-            f"Stärke: {item['strength']} | "
-            f"Risiko: {item['risk']} | "
-            f"Score: {item['score']:.2f}"
-        )
-        print(f"   Grund: {reasons}")
-
-    print("====================================================\n")
-
-
-def print_financial_overview(initial_cash_eur, current_equity_eur, pnl_eur, native_currency, pnl_native):
-    pnl_eur_str = colorize(pnl_eur, f"{pnl_eur:.2f} EUR")
-
-    print("\n==============================")
-    print("FINANZÜBERSICHT (Basis: EUR)")
-    print("------------------------------")
-    print(f"Start          : {initial_cash_eur:.2f} EUR")
-    print(f"Stand          : {current_equity_eur:.2f} EUR")
-    print(f"Differenz      : {pnl_eur_str}")
-    if native_currency != BASE_CURRENCY:
-        print(f"Info Fremdwährung: {colorize(pnl_native, f'{pnl_native:.2f} {native_currency}')}")
-    print("==============================\n")
-
-
 def print_summary_only(closed_trades, native_currency):
     total_pnl_eur = sum(t.get("pnl_eur", 0.0) for t in closed_trades)
-    total_pnl_native = sum(t.get("pnl_native", 0.0) for t in closed_trades)
 
     wins = sum(1 for t in closed_trades if t.get("pnl_eur", 0.0) > 0)
     losses = sum(1 for t in closed_trades if t.get("pnl_eur", 0.0) < 0)
     total = len(closed_trades)
 
     hit = (wins / total * 100) if total else 0.0
-
-    pnl_eur_str = colorize(total_pnl_eur, f"{total_pnl_eur:.2f} EUR")
+    pnl_str = colorize(total_pnl_eur, f"{total_pnl_eur:.2f} EUR")
 
     print("==============================")
     print("GESAMT (EUR)")
@@ -82,44 +41,24 @@ def print_summary_only(closed_trades, native_currency):
     print(f"Gewinntrades          : {wins}")
     print(f"Verlusttrades         : {losses}")
     print(f"Trefferquote          : {hit:.2f} %")
-    print(f"Gesamt P/L            : {pnl_eur_str}")
-    if native_currency != BASE_CURRENCY:
-        print(
-            f"Info Handelswährung   : "
-            f"{colorize(total_pnl_native, f'{total_pnl_native:.2f} {native_currency}')}"
-        )
+    print(f"Gesamt P/L            : {pnl_str}")
     print("==============================\n")
 
 
 def print_ranking(results):
     print("\n====================================================")
-    print("RANKING DER BESTEN BACKTESTS (EUR + FX ANALYSE)")
+    print("RANKING DER BESTEN BACKTESTS (EUR)")
     print("====================================================")
 
     for i, r in enumerate(results, 1):
-        pnl_eur = r["pnl_eur"]
-        pnl_native = r["pnl_native"]
-        currency = r["native_currency"]
-
-        pnl_eur_str = colorize(pnl_eur, f"{pnl_eur:.2f} EUR")
+        pnl = r["pnl_eur"]
+        pnl_str = colorize(pnl, f"{pnl:.2f} EUR")
 
         print(
             f"{i}. {r['symbol']} | "
-            f"{pnl_eur_str} "
-            f"({r['pnl_pct_eur']:.2f}%) | "
+            f"{pnl_str} ({r['pnl_pct_eur']:.2f}%) | "
             f"Trades: {r['trade_count']}"
         )
-
-        if currency != BASE_CURRENCY:
-            fx_effect = pnl_eur - pnl_native
-            print(
-                f"   Aktie ({currency}): "
-                f"{colorize(pnl_native, f'{pnl_native:.2f} {currency}')}"
-            )
-            print(
-                f"   FX-Effekt       : "
-                f"{colorize(fx_effect, f'{fx_effect:.2f} EUR')}"
-            )
 
     print("====================================================\n")
 
@@ -133,7 +72,7 @@ def print_recommendation(symbol, signal, price_eur, price_native, native_currenc
         print(
             f"{symbol}: {signal_str} @ "
             f"{price_eur:.2f} EUR "
-            f"(Handel in {native_currency}: {price_native:.2f})"
+            f"(Handel: {price_native:.2f} {native_currency})"
         )
 
 
@@ -142,92 +81,182 @@ def print_portfolio(portfolio):
     print("DEPOT (EUR)")
     print("------------------------------")
 
-    total_eur = 0.0
+    total = 0.0
 
     if not portfolio:
         print("Keine Positionen im virtuellen Depot.")
 
     for symbol, pos in portfolio.items():
-        value_eur = pos["qty"] * pos["price_eur"]
-        total_eur += value_eur
+        value = pos["qty"] * pos["price_eur"]
+        total += value
+        value_str = colorize(value, f"{value:.2f} EUR")
 
-        extra = ""
-        if pos["native_currency"] != BASE_CURRENCY:
-            value_native = pos["qty"] * pos["price_native"]
-            extra = f" | {value_native:.2f} {pos['native_currency']}"
-
-        print(
-            f"{symbol}: {pos['qty']} Stück | "
-            f"Wert {colorize(value_eur, f'{value_eur:.2f} EUR')}"
-            f"{extra}"
-        )
+        if pos["native_currency"] == BASE_CURRENCY:
+            print(f"{symbol}: {pos['qty']} Stück | Wert {value_str}")
+        else:
+            native_value = pos["qty"] * pos["price_native"]
+            print(
+                f"{symbol}: {pos['qty']} Stück | "
+                f"Wert {value_str} | "
+                f"{native_value:.2f} {pos['native_currency']}"
+            )
 
     print("------------------------------")
-    print(f"Depotwert: {colorize(total_eur, f'{total_eur:.2f} EUR')}")
+    print(f"Depotwert: {colorize(total, f'{total:.2f} EUR')}")
     print("==============================\n")
 
 
-def print_closed_trades(symbol, company_name, isin, wkn, trades, native_currency):
+def print_future_candidates(candidates):
+    print("\n====================================================")
+    print("TOP-KANDIDATEN FÜR DIE ZUKUNFT")
+    print("====================================================")
+
+    if not candidates:
+        print("Keine Kandidaten gefunden.")
+        print("====================================================\n")
+        return
+
+    for i, c in enumerate(candidates, 1):
+        reasons = ", ".join(c.get("reasons", [])) if c.get("reasons") else "keine klare Begründung"
+
+        print(
+            f"{i}. {c['symbol']} | "
+            f"{colorize_signal(c['future_signal'])} | "
+            f"Score: {c['score']:.2f} | "
+            f"Stärke: {c['strength']} | "
+            f"Risiko: {c['risk']}"
+        )
+        print(f"   Grund: {reasons}")
+
+    print("====================================================\n")
+
+
+def print_financial_overview(start, end, pnl, currency, pnl_native):
+    print("\n==============================")
+    print("FINANZÜBERSICHT")
+    print("------------------------------")
+    print(f"Start     : {start:.2f} EUR")
+    print(f"Stand     : {end:.2f} EUR")
+    print(f"Differenz : {colorize(pnl, f'{pnl:.2f} EUR')}")
+    if currency != BASE_CURRENCY:
+        print(f"Info      : {pnl_native:.2f} {currency}")
+    print("==============================\n")
+
+
+def print_equity_curve_terminal(symbol, curve):
+    if not curve:
+        return
+
+    values = [p["equity_eur"] for p in curve]
+
+    blocks = "▁▂▃▄▅▆▇█"
+    min_v = min(values)
+    max_v = max(values)
+
+    if max_v == min_v:
+        line = "─" * len(values)
+    else:
+        line = ""
+        for v in values:
+            idx = int((v - min_v) / (max_v - min_v) * (len(blocks) - 1))
+            line += blocks[idx]
+
+    print("\n==============================")
+    print(f"DEPOTWERT-KURVE {symbol}")
+    print("------------------------------")
+    print(line)
+    print(f"Start: {values[0]:.2f} | Ende: {values[-1]:.2f}")
+    print("==============================\n")
+
+
+def print_closed_trades(symbol, name, isin, wkn, trades, currency):
     if not trades:
         return
 
     print(f"\nDETAILS {symbol}")
     print("------------------------------")
-    print(f"Name            : {company_name}")
-    print(f"ISIN            : {isin}")
-    print(f"WKN             : {wkn}")
-    print(f"Handelswährung  : {native_currency}")
+    print(f"{name}")
+    print(f"ISIN: {isin} | WKN: {wkn} | Währung: {currency}")
     print("------------------------------")
 
     for t in trades:
-        pnl_eur = t["pnl_eur"]
-        pnl_native = t["pnl_native"]
-
-        print(f"Kaufdatum       : {t['buy_time']}")
-        print(f"Verkaufsdatum   : {t['sell_time']}")
-        print(f"Ergebnis (EUR)  : {colorize(pnl_eur, f'{pnl_eur:.2f} EUR')}")
-
-        if native_currency != BASE_CURRENCY:
-            fx_effect = pnl_eur - pnl_native
-            print(f"Aktie ({native_currency}): {colorize(pnl_native, f'{pnl_native:.2f} {native_currency}')}")
-            print(f"FX-Effekt       : {colorize(fx_effect, f'{fx_effect:.2f} EUR')}")
-
-        print(f"Ergebnis in %   : {t['pnl_pct_eur']:.2f} %")
-        print("------------------------------")
+        pnl_eur = t.get("pnl_eur", 0.0)
+        pnl_str = colorize(pnl_eur, f"{pnl_eur:.2f} EUR")
+        print(f"{t['buy_time']} -> {t['sell_time']} | {pnl_str}")
 
 
-def print_equity_curve_terminal(symbol, equity_curve_eur):
-    if not equity_curve_eur or len(equity_curve_eur) < 2:
+def print_diagnostics(info):
+    print("\n------------------------------")
+    print(f"DIAGNOSE {info['symbol']}")
+    print("------------------------------")
+
+    def yn(v):
+        return "JA" if v else "NEIN"
+
+    print(f"Trend                : {yn(info.get('trend_ok'))}")
+    print(f"Breakout             : {yn(info.get('breakout_ok'))}")
+    print(f"Momentum             : {yn(info.get('momentum_ok'))}")
+    print(f"Volatilität          : {yn(info.get('volatility_ok'))}")
+    print(f"Relative Stärke      : {yn(info.get('relative_strength_ok'))}")
+
+    rs = info.get("relative_strength_pct")
+    if rs is not None:
+        print(f"RS vs Markt          : {rs:.2f}%")
+
+    print(f"Fundamental Score    : {info.get('fundamental_score')}")
+    print(f"Score                : {info.get('score'):.2f}")
+    print(f"Aktuell              : {info.get('current_signal')}")
+    print(f"Zukunft              : {info.get('future_signal')}")
+    print("------------------------------\n")
+
+
+def print_buy_overview(candidates):
+    print("\n====================================================")
+    print("KAUFEMPFEHLUNGEN (ÜBERSICHT)")
+    print("====================================================")
+
+    filtered = [c for c in candidates if c["future_signal"] in ("BUY", "WATCH")]
+
+    if not filtered:
+        print("Keine BUY/WATCH Kandidaten gefunden.")
+        print("====================================================\n")
         return
 
-    values = [p["equity_eur"] for p in equity_curve_eur]
-    labels = [p["time"] for p in equity_curve_eur]
+    for i, c in enumerate(filtered, 1):
+        print(
+            f"{i}. {c['symbol']} | "
+            f"{colorize_signal(c['future_signal'])} | "
+            f"Score: {c['score']:.2f} | "
+            f"Stärke: {c['strength']} | "
+            f"Risiko: {c['risk']}"
+        )
 
-    blocks = "▁▂▃▄▅▆▇█"
-    min_val = min(values)
-    max_val = max(values)
+    print("====================================================\n")
 
-    if max_val == min_val:
-        sparkline = "─" * len(values)
-    else:
-        sparkline = ""
-        for v in values:
-            idx = int((v - min_val) / (max_val - min_val) * (len(blocks) - 1))
-            sparkline += blocks[idx]
 
-    change = values[-1] - values[0]
-    sparkline = colorize(change, sparkline)
+def print_buy_blockers_summary(blockers):
+    print("\n====================================================")
+    print("WARUM GIBT ES KAUM BUY-SIGNALE?")
+    print("====================================================")
 
+    if not blockers:
+        print("Keine Blocker erkannt.")
+        print("====================================================\n")
+        return
+
+    sorted_items = sorted(blockers.items(), key=lambda x: x[1], reverse=True)
+
+    for i, (name, count) in enumerate(sorted_items, 1):
+        if count <= 0:
+            continue
+        print(f"{i}. {name:<24}: {count} Aktien")
+
+    print("====================================================\n")
+
+
+def print_runtime(seconds):
     print("\n==============================")
-    print(f"DEPOTWERT-KURVE {symbol} (EUR)")
+    print("LAUFZEIT")
     print("------------------------------")
-    print(sparkline)
-    print(
-        f"Start: {values[0]:.2f} EUR | "
-        f"Tief: {min_val:.2f} EUR | "
-        f"Hoch: {max_val:.2f} EUR | "
-        f"Ende: {values[-1]:.2f} EUR"
-    )
-    print(f"Von: {labels[0]}")
-    print(f"Bis: {labels[-1]}")
+    print(f"{seconds:.2f} Sekunden")
     print("==============================\n")
