@@ -237,12 +237,6 @@ def load_fx_data(period, interval):
 
 
 def load_fx_to_eur_data(currency, period, interval):
-    """
-    Liefert eine Zeitreihe 'fx_to_eur', also EUR pro 1 Einheit Handelswährung.
-    Beispiele:
-      USD -> ca. 0.92
-      EUR -> 1.0
-    """
     currency = (currency or "USD").upper()
 
     if currency == "EUR":
@@ -319,18 +313,25 @@ def fallback_rate_to_eur(currency):
 
 def load_ticker_metadata(symbol):
     """
-    Holt Name / ISIN / Währung online über yfinance.
+    Holt Name / ISIN / Währung / einfache Fundamentaldaten online über yfinance.
     WKN ist bei Yahoo/yfinance oft nicht verlässlich verfügbar und bleibt '-'.
     """
     try:
         ticker = yf.Ticker(symbol)
     except Exception:
-        return {"name": symbol, "isin": "-", "wkn": "-", "currency": "USD"}
+        return {
+            "name": symbol,
+            "isin": "-",
+            "wkn": "-",
+            "currency": "USD",
+            "fundamentals": {},
+        }
 
     name = symbol
     isin = "-"
     wkn = "-"
     currency = "USD"
+    fundamentals = {}
 
     try:
         info = ticker.get_info()
@@ -347,6 +348,16 @@ def load_ticker_metadata(symbol):
         wkn = info.get("wkn") or info.get("securityId") or "-"
         currency = info.get("currency") or currency
 
+        fundamentals = {
+            "market_cap": info.get("marketCap"),
+            "trailing_pe": info.get("trailingPE"),
+            "forward_pe": info.get("forwardPE"),
+            "earnings_growth": info.get("earningsGrowth"),
+            "revenue_growth": info.get("revenueGrowth"),
+            "profit_margins": info.get("profitMargins"),
+            "return_on_equity": info.get("returnOnEquity"),
+        }
+
     try:
         ticker_isin = ticker.isin
         if ticker_isin:
@@ -359,4 +370,5 @@ def load_ticker_metadata(symbol):
         "isin": isin,
         "wkn": wkn if wkn else "-",
         "currency": (currency or "USD").upper(),
+        "fundamentals": fundamentals,
     }

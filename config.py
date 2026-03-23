@@ -5,6 +5,9 @@ UNIVERSE_SOURCES = [
     "nasdaq100",
 ]
 
+# Benchmark für relative Stärke
+BENCHMARK_SYMBOL = "SPY"
+
 # Anzeige / Basiswährung
 BASE_CURRENCY = "EUR"
 FX_SYMBOL = "EURUSD=X"
@@ -26,7 +29,7 @@ MAX_ALLOC_PCT = 0.20
 STOP_LOSS_PCT = 0.03
 TAKE_PROFIT_PCT = 0.06
 
-# Strategie V2
+# Strategie
 EMA_FAST = 9
 EMA_SLOW = 21
 RSI_PERIOD = 14
@@ -38,6 +41,10 @@ BREAKOUT_LOOKBACK = 20
 ATR_PERIOD = 14
 MIN_ATR_PCT = 1.0
 COOLDOWN_BARS = 5
+
+# Relative Stärke
+RELATIVE_STRENGTH_LOOKBACK = 20
+MIN_RELATIVE_STRENGTH_PCT = 2.0
 
 STATE_FILE = "state.json"
 BROKER_FILE = "broker_state.json"
@@ -51,8 +58,8 @@ REPORTS_DIR = "reports"
 
 # Zukunftsempfehlung / Beobachtungsliste
 RECOMMENDATION_TOP_N = 5
-MIN_SCORE_FOR_BUY = 35
-MIN_SCORE_FOR_WATCH = 20
+MIN_SCORE_FOR_BUY = 40
+MIN_SCORE_FOR_WATCH = 22
 
 # Fallbacks, falls FX-Daten temporär fehlen
 FX_FALLBACK_RATES_TO_EUR = {
@@ -64,5 +71,3 @@ FX_FALLBACK_RATES_TO_EUR = {
     "CAD": 0.68,
     "AUD": 0.61,
 }
-
-
