@@ -6,6 +6,7 @@ from output import (
     print_closed_trades,
     print_financial_overview,
     print_equity_curve_terminal,
+    print_future_candidates,
 )
 
 
@@ -50,6 +51,26 @@ def test_print_ranking_outputs_symbols(capsys):
     assert "RANKING DER BESTEN BACKTESTS" in captured.out
     assert "AAPL" in captured.out
     assert "SAP" in captured.out
+
+
+def test_print_future_candidates_outputs_reasons(capsys):
+    candidates = [
+        {
+            "symbol": "AAPL",
+            "future_signal": "BUY",
+            "strength": "hoch",
+            "risk": "mittel",
+            "score": 42.5,
+            "reasons": ["über SMA200", "Breakout"],
+        }
+    ]
+
+    print_future_candidates(candidates)
+
+    captured = capsys.readouterr()
+    assert "TOP-KANDIDATEN FÜR DIE ZUKUNFT" in captured.out
+    assert "AAPL" in captured.out
+    assert "Breakout" in captured.out
 
 
 def test_print_recommendation_outputs_signal(capsys):

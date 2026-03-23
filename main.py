@@ -7,10 +7,10 @@ from config import (
     DEFAULT_MIN_VOLUME,
     COOLDOWN_BARS,
     REPORTS_DIR,
+    RECOMMENDATION_TOP_N,
 )
 from broker import Broker
 from data_loader import (
-    load_data,
     load_data_batch,
     load_fx_to_eur_data,
     latest_rate_to_eur,
@@ -35,6 +35,7 @@ from output import (
     print_portfolio,
     print_financial_overview,
     print_equity_curve_terminal,
+    print_future_candidates,
 )
 from report_writer import save_run_outputs
 
@@ -120,8 +121,7 @@ def ask():
     return normalize_period_input(user_input)
 
 
-def get_signal(symbol, period, interval, rate_to_eur_latest):
-    df = load_data(symbol, period, interval)
+def get_signal_from_df(df, rate_to_eur_latest):
     df = add_signals(df)
 
     if df.empty:
@@ -135,8 +135,7 @@ def get_signal(symbol, period, interval, rate_to_eur_latest):
     return signal, price_eur, price_native
 
 
-def backtest(symbol, period, interval, native_currency, fx_df, rate_to_eur_latest):
-    df = load_data(symbol, period, interval)
+def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest):
     df = add_signals(df).dropna()
 
     if df.empty:
@@ -196,7 +195,6 @@ def backtest(symbol, period, interval, native_currency, fx_df, rate_to_eur_lates
         pnl_native = pnl_eur / end_rate
 
     return {
-        "symbol": symbol,
         "native_currency": native_currency,
         "pnl_eur": pnl_eur,
         "pnl_native": pnl_native,
@@ -211,20 +209,59 @@ def backtest(symbol, period, interval, native_currency, fx_df, rate_to_eur_lates
     }
 
 
+def build_future_candidates(analyzed, top_n):
+    future = sorted(analyzed, key=lambda x: x["score"], reverse=True)
+    return future[:top_n]
+
+
 def run(period, top_n, min_volume, long_mode):
     interval = choose_interval(period)
 
     all_symbols = fetch_dynamic_universe()
     batch_data = load_data_batch(all_symbols, period, interval, chunk_size=25, pause_seconds=1.0)
 
-    screened = []
+    analyzed = []
     for symbol, df in batch_data.items():
         info = analyze_symbol(df, symbol)
-        if info and info["avg_volume"] >= min_volume and info["is_candidate"]:
-            screened.append(info)
+        if info and info["avg_volume"] >= min_volume:
+            analyzed.append(info)
 
+    future_candidates = build_future_candidates(analyzed, RECOMMENDATION_TOP_N)
+    print_future_candidates(future_candidates)
+
+    screened = [x for x in analyzed if x["is_candidate"]]
     screened.sort(key=lambda x: x["score"], reverse=True)
+
+    fallback_used = False
+
+    if not screened:
+        fallback_used = True
+        screened = sorted(analyzed, key=lambda x: x["score"], reverse=True)
+
     selected_symbols = [x["symbol"] for x in screened[:top_n]]
+
+    if fallback_used and analyzed:
+        print("\nHinweis: Keine Aktie hat alle Filter erfüllt.")
+        print("Es werden deshalb die bestbewerteten verfügbaren Aktien als Fallback genutzt.\n")
+
+    if not selected_symbols:
+        print("\nKeine auswertbaren Aktien gefunden.\n")
+        print_ranking([])
+        print_portfolio({})
+        save_run_outputs(
+            output_dir=REPORTS_DIR,
+            period=period,
+            interval=interval,
+            results=[],
+            portfolio={},
+        )
+        return {
+            "period": period,
+            "interval": interval,
+            "results": [],
+            "portfolio": {},
+            "future_candidates": future_candidates,
+        }
 
     results = []
     portfolio = {}
@@ -232,6 +269,10 @@ def run(period, top_n, min_volume, long_mode):
     fx_cache = {}
 
     for symbol in selected_symbols:
+        df = batch_data.get(symbol)
+        if df is None or df.empty:
+            continue
+
         if symbol not in metadata_cache:
             metadata_cache[symbol] = load_ticker_metadata(symbol)
 
@@ -251,20 +292,16 @@ def run(period, top_n, min_volume, long_mode):
         fx_df = fx_cache[native_currency]["df"]
         rate_to_eur_latest = fx_cache[native_currency]["latest"]
 
-        signal, price_eur, price_native = get_signal(
-            symbol,
-            period,
-            interval,
+        signal, price_eur, price_native = get_signal_from_df(
+            df,
             rate_to_eur_latest,
         )
 
         if signal and price_eur is not None and price_native is not None:
             print_recommendation(symbol, signal, price_eur, price_native, native_currency)
 
-        result = backtest(
-            symbol,
-            period,
-            interval,
+        result = backtest_from_df(
+            df,
             native_currency,
             fx_df,
             rate_to_eur_latest,
@@ -272,6 +309,7 @@ def run(period, top_n, min_volume, long_mode):
         if not result:
             continue
 
+        result["symbol"] = symbol
         result["company_name"] = meta.get("name", symbol)
         result["isin"] = meta.get("isin", "-")
         result["wkn"] = meta.get("wkn", "-")
@@ -327,6 +365,7 @@ def run(period, top_n, min_volume, long_mode):
         "interval": interval,
         "results": results,
         "portfolio": portfolio,
+        "future_candidates": future_candidates,
     }
 
 

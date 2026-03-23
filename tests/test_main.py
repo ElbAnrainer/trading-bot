@@ -22,7 +22,11 @@ def test_normalize_period_input():
 
 
 def test_parse_args_period(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["main.py", "-l", "--top", "5", "--min-volume", "1000000", "--period", "1j"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["main.py", "-l", "--top", "5", "--min-volume", "1000000", "--period", "1j"],
+    )
     long_mode, top_n, min_volume, period_override = main.parse_args()
 
     assert long_mode is True
@@ -31,7 +35,7 @@ def test_parse_args_period(monkeypatch):
     assert period_override == "1y"
 
 
-def test_get_signal_with_mocked_data(monkeypatch):
+def test_get_signal_from_df():
     df = pd.DataFrame(
         {
             "Open": list(range(1, 261)),
@@ -42,10 +46,20 @@ def test_get_signal_with_mocked_data(monkeypatch):
         }
     )
 
-    monkeypatch.setattr(main, "load_data", lambda symbol, period, interval: df)
-
-    signal, price_eur, price_native = main.get_signal("AAPL", "1y", "1d", 0.9)
+    signal, price_eur, price_native = main.get_signal_from_df(df, 0.9)
 
     assert signal in {"BUY", "SELL", "HOLD"}
     assert price_native == 260.0
     assert price_eur == 260.0 * 0.9
+
+
+def test_build_future_candidates():
+    analyzed = [
+        {"symbol": "A", "score": 10},
+        {"symbol": "B", "score": 50},
+        {"symbol": "C", "score": 30},
+    ]
+
+    out = main.build_future_candidates(analyzed, 2)
+
+    assert [x["symbol"] for x in out] == ["B", "C"]

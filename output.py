@@ -2,6 +2,7 @@ from config import BASE_CURRENCY
 
 GREEN = "\033[92m"
 RED = "\033[91m"
+YELLOW = "\033[93m"
 RESET = "\033[0m"
 
 
@@ -13,9 +14,41 @@ def colorize(value, text):
     return text
 
 
-# ---------------------------
-# FINANZÜBERSICHT
-# ---------------------------
+def colorize_signal(signal):
+    if signal == "BUY":
+        return f"{GREEN}{signal}{RESET}"
+    if signal == "SELL":
+        return f"{RED}{signal}{RESET}"
+    if signal == "WATCH":
+        return f"{YELLOW}{signal}{RESET}"
+    return signal
+
+
+def print_future_candidates(candidates):
+    print("\n====================================================")
+    print("TOP-KANDIDATEN FÜR DIE ZUKUNFT")
+    print("====================================================")
+
+    if not candidates:
+        print("Keine Kandidaten gefunden.")
+        print("====================================================\n")
+        return
+
+    for idx, item in enumerate(candidates, start=1):
+        reasons = ", ".join(item.get("reasons", [])) if item.get("reasons") else "keine klare Begründung"
+
+        print(
+            f"{idx}. {item['symbol']} | "
+            f"Signal: {colorize_signal(item['future_signal'])} | "
+            f"Stärke: {item['strength']} | "
+            f"Risiko: {item['risk']} | "
+            f"Score: {item['score']:.2f}"
+        )
+        print(f"   Grund: {reasons}")
+
+    print("====================================================\n")
+
+
 def print_financial_overview(initial_cash_eur, current_equity_eur, pnl_eur, native_currency, pnl_native):
     pnl_eur_str = colorize(pnl_eur, f"{pnl_eur:.2f} EUR")
 
@@ -25,19 +58,11 @@ def print_financial_overview(initial_cash_eur, current_equity_eur, pnl_eur, nati
     print(f"Start          : {initial_cash_eur:.2f} EUR")
     print(f"Stand          : {current_equity_eur:.2f} EUR")
     print(f"Differenz      : {pnl_eur_str}")
-
     if native_currency != BASE_CURRENCY:
-        print(
-            f"Handelsergebnis ({native_currency}): "
-            f"{colorize(pnl_native, f'{pnl_native:.2f} {native_currency}')}"
-        )
-
+        print(f"Info Fremdwährung: {colorize(pnl_native, f'{pnl_native:.2f} {native_currency}')}")
     print("==============================\n")
 
 
-# ---------------------------
-# GESAMT
-# ---------------------------
 def print_summary_only(closed_trades, native_currency):
     total_pnl_eur = sum(t.get("pnl_eur", 0.0) for t in closed_trades)
     total_pnl_native = sum(t.get("pnl_native", 0.0) for t in closed_trades)
@@ -58,19 +83,14 @@ def print_summary_only(closed_trades, native_currency):
     print(f"Verlusttrades         : {losses}")
     print(f"Trefferquote          : {hit:.2f} %")
     print(f"Gesamt P/L            : {pnl_eur_str}")
-
     if native_currency != BASE_CURRENCY:
         print(
-            f"Handelsergebnis ({native_currency}): "
+            f"Info Handelswährung   : "
             f"{colorize(total_pnl_native, f'{total_pnl_native:.2f} {native_currency}')}"
         )
-
     print("==============================\n")
 
 
-# ---------------------------
-# RANKING (NEU: FX-ANALYSE)
-# ---------------------------
 def print_ranking(results):
     print("\n====================================================")
     print("RANKING DER BESTEN BACKTESTS (EUR + FX ANALYSE)")
@@ -91,8 +111,7 @@ def print_ranking(results):
         )
 
         if currency != BASE_CURRENCY:
-            fx_effect = pnl_eur - (pnl_native * 1.0)  # rein zur Anzeige
-
+            fx_effect = pnl_eur - pnl_native
             print(
                 f"   Aktie ({currency}): "
                 f"{colorize(pnl_native, f'{pnl_native:.2f} {currency}')}"
@@ -105,25 +124,19 @@ def print_ranking(results):
     print("====================================================\n")
 
 
-# ---------------------------
-# EMPFEHLUNG
-# ---------------------------
 def print_recommendation(symbol, signal, price_eur, price_native, native_currency):
-    color = GREEN if signal == "BUY" else RED if signal == "SELL" else RESET
+    signal_str = colorize_signal(signal)
 
     if native_currency == BASE_CURRENCY:
-        print(f"{symbol}: {color}{signal}{RESET} @ {price_eur:.2f} EUR")
+        print(f"{symbol}: {signal_str} @ {price_eur:.2f} EUR")
     else:
         print(
-            f"{symbol}: {color}{signal}{RESET} @ "
+            f"{symbol}: {signal_str} @ "
             f"{price_eur:.2f} EUR "
             f"(Handel in {native_currency}: {price_native:.2f})"
         )
 
 
-# ---------------------------
-# DEPOT
-# ---------------------------
 def print_portfolio(portfolio):
     print("\n==============================")
     print("DEPOT (EUR)")
@@ -154,9 +167,6 @@ def print_portfolio(portfolio):
     print("==============================\n")
 
 
-# ---------------------------
-# TRADES
-# ---------------------------
 def print_closed_trades(symbol, company_name, isin, wkn, trades, native_currency):
     if not trades:
         return
@@ -186,9 +196,6 @@ def print_closed_trades(symbol, company_name, isin, wkn, trades, native_currency
         print("------------------------------")
 
 
-# ---------------------------
-# KURVE
-# ---------------------------
 def print_equity_curve_terminal(symbol, equity_curve_eur):
     if not equity_curve_eur or len(equity_curve_eur) < 2:
         return
@@ -200,10 +207,13 @@ def print_equity_curve_terminal(symbol, equity_curve_eur):
     min_val = min(values)
     max_val = max(values)
 
-    sparkline = ""
-    for v in values:
-        idx = int((v - min_val) / (max_val - min_val + 1e-9) * (len(blocks) - 1))
-        sparkline += blocks[idx]
+    if max_val == min_val:
+        sparkline = "─" * len(values)
+    else:
+        sparkline = ""
+        for v in values:
+            idx = int((v - min_val) / (max_val - min_val) * (len(blocks) - 1))
+            sparkline += blocks[idx]
 
     change = values[-1] - values[0]
     sparkline = colorize(change, sparkline)

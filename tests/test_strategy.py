@@ -6,6 +6,7 @@ from strategy import (
     normalize_signal_from_row,
     stop_loss_price,
     take_profit_price,
+    analyze_symbol,
 )
 
 
@@ -86,3 +87,14 @@ def test_normalize_signal_from_row_hold():
         "sell_signal": False,
     }
     assert normalize_signal_from_row(row) == "HOLD"
+
+
+def test_analyze_symbol_contains_future_fields():
+    df = make_df()
+    out = analyze_symbol(df, "AAPL")
+
+    assert out is not None
+    assert "future_signal" in out
+    assert "strength" in out
+    assert "risk" in out
+    assert "reasons" in out

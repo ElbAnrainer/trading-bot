@@ -49,6 +49,11 @@ DEFAULT_MIN_VOLUME = 5_000_000
 # Reports
 REPORTS_DIR = "reports"
 
+# Zukunftsempfehlung / Beobachtungsliste
+RECOMMENDATION_TOP_N = 5
+MIN_SCORE_FOR_BUY = 35
+MIN_SCORE_FOR_WATCH = 20
+
 # Fallbacks, falls FX-Daten temporär fehlen
 FX_FALLBACK_RATES_TO_EUR = {
     "EUR": 1.0,
@@ -59,3 +64,5 @@ FX_FALLBACK_RATES_TO_EUR = {
     "CAD": 0.68,
     "AUD": 0.61,
 }
+
+
