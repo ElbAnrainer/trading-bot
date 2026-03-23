@@ -8,6 +8,8 @@ from output import (
     print_equity_curve_terminal,
     print_future_candidates,
     print_diagnostics,
+    print_buy_overview,
+    print_simulation_notice,
 )
 
 
@@ -20,20 +22,33 @@ def test_print_summary_only_outputs_expected_text(capsys):
     print_summary_only(closed_trades, "USD")
 
     captured = capsys.readouterr()
-    assert "GESAMT" in captured.out
+    assert "SIMULATIONSERGEBNIS" in captured.out
     assert "Abgeschlossene Trades" in captured.out
 
 
 def test_print_ranking_outputs_symbols(capsys):
     results = [
-        {"symbol": "AAPL", "pnl_eur": 120.0, "pnl_pct_eur": 1.2, "trade_count": 5},
-        {"symbol": "SAP", "pnl_eur": -20.0, "pnl_pct_eur": -0.2, "trade_count": 3},
+        {
+            "symbol": "AAPL",
+            "company_name": "Apple Inc.",
+            "pnl_eur": 120.0,
+            "pnl_pct_eur": 1.2,
+            "trade_count": 5,
+        },
+        {
+            "symbol": "SAP",
+            "company_name": "SAP SE",
+            "pnl_eur": -20.0,
+            "pnl_pct_eur": -0.2,
+            "trade_count": 3,
+        },
     ]
 
     print_ranking(results)
 
     captured = capsys.readouterr()
     assert "AAPL" in captured.out
+    assert "Apple Inc." in captured.out
     assert "SAP" in captured.out
 
 
@@ -41,6 +56,7 @@ def test_print_future_candidates_outputs_reasons(capsys):
     candidates = [
         {
             "symbol": "AAPL",
+            "company_name": "Apple Inc.",
             "future_signal": "BUY",
             "strength": "hoch",
             "risk": "mittel",
@@ -52,7 +68,8 @@ def test_print_future_candidates_outputs_reasons(capsys):
     print_future_candidates(candidates)
 
     captured = capsys.readouterr()
-    assert "TOP-KANDIDATEN FÜR DIE ZUKUNFT" in captured.out
+    assert "TOP-KANDIDATEN FÜR DIE BEOBACHTUNG" in captured.out
+    assert "Apple Inc." in captured.out
     assert "Breakout" in captured.out
 
 
@@ -66,14 +83,27 @@ def test_print_recommendation_outputs_signal(capsys):
 
 def test_print_portfolio_outputs_positions(capsys):
     portfolio = {
-        "AAPL": {"qty": 10, "price_eur": 100.0, "price_native": 110.0, "native_currency": "USD"},
-        "SAP": {"qty": 5, "price_eur": 200.0, "price_native": 200.0, "native_currency": "EUR"},
+        "AAPL": {
+            "qty": 10,
+            "price_eur": 100.0,
+            "price_native": 110.0,
+            "native_currency": "USD",
+            "company_name": "Apple Inc.",
+        },
+        "SAP": {
+            "qty": 5,
+            "price_eur": 200.0,
+            "price_native": 200.0,
+            "native_currency": "EUR",
+            "company_name": "SAP SE",
+        },
     }
 
     print_portfolio(portfolio)
 
     captured = capsys.readouterr()
-    assert "DEPOT" in captured.out
+    assert "SIMULIERTES DEPOT" in captured.out
+    assert "Apple Inc." in captured.out
     assert "Depotwert" in captured.out
 
 
@@ -81,7 +111,7 @@ def test_print_portfolio_outputs_empty_message(capsys):
     print_portfolio({})
 
     captured = capsys.readouterr()
-    assert "Keine Positionen im virtuellen Depot." in captured.out
+    assert "Keine Positionen im simulierten Depot." in captured.out
 
 
 def test_print_closed_trades_outputs_metadata_and_trade_data(capsys):
@@ -118,7 +148,7 @@ def test_print_financial_overview_outputs_expected_text(capsys):
     )
 
     captured = capsys.readouterr()
-    assert "FINANZÜBERSICHT" in captured.out
+    assert "FINANZÜBERSICHT DER SIMULATION" in captured.out
     assert "Differenz" in captured.out
 
 
@@ -135,6 +165,7 @@ def test_print_equity_curve_terminal_outputs_curve(capsys):
     captured = capsys.readouterr()
     assert "DEPOTWERT-KURVE AAPL" in captured.out
     assert "Start:" in captured.out
+    assert "Ende:" in captured.out
 
 
 def test_print_diagnostics_outputs_fields(capsys):
@@ -158,3 +189,30 @@ def test_print_diagnostics_outputs_fields(capsys):
     assert "DIAGNOSE AAPL" in captured.out
     assert "Trend" in captured.out
     assert "Zukunft" in captured.out
+
+
+def test_print_buy_overview_outputs_heading(capsys):
+    candidates = [
+        {
+            "symbol": "AAPL",
+            "company_name": "Apple Inc.",
+            "future_signal": "WATCH",
+            "strength": "hoch",
+            "risk": "mittel",
+            "score": 55.0,
+        }
+    ]
+
+    print_buy_overview(candidates)
+
+    captured = capsys.readouterr()
+    assert "BEOBACHTUNGSSIGNALE" in captured.out
+    assert "Apple Inc." in captured.out
+
+
+def test_print_simulation_notice_outputs_text(capsys):
+    print_simulation_notice()
+
+    captured = capsys.readouterr()
+    assert "SIMULATIONSHINWEIS" in captured.out
+    assert "keine echten Orders" in captured.out

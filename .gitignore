@@ -1,9 +1,95 @@
-.venv/
+# =========================
+# Python
+# =========================
 __pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# =========================
+# Virtual Environment
+# =========================
+.venv/
+venv/
+env/
+ENV/
+
+# =========================
+# Logs & Runtime
+# =========================
+*.log
+*.out
+*.err
+
+# =========================
+# Reports / Simulation Data
+# =========================
+reports/
+trading_journal.csv
+
+# =========================
+# Test / Coverage
+# =========================
+.coverage
+.coverage.*
+htmlcov/
 .pytest_cache/
-*.pyc
+
+# =========================
+# Jupyter (falls du später nutzt)
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# IDEs / Editors
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# macOS
+# =========================
 .DS_Store
 
-reports/
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
+
+# =========================
+# Temporary / Backup Files
+# =========================
 backup_refactor_*/
-refactor_artifacts_bundle.zip
+*.tmp
+*.bak
+
+# =========================
+# Zip / Bundles
+# =========================
+*.zip
+
+# =========================
+# CI / Deployment Artifacts
+# =========================
+*.sqlite3

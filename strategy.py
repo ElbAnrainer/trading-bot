@@ -247,15 +247,17 @@ def analyze_symbol(df, symbol, benchmark_df=None, fundamentals=None):
 
     fundamental_score = _calc_fundamental_score(fundamentals or {})
 
-    score = (
-        momentum * 0.35
-        + volatility * 12
-        + (10 if bool(last["trend_ok"]) else 0)
-        + (8 if bool(last["breakout_ok"]) else 0)
-        + (5 if bool(last["momentum_ok"]) else 0)
-        + (8 if relative_strength_ok else 0)
-        + (fundamental_score * 2.5)
-    )
+    score_components = {
+        "momentum_component": momentum * 0.35,
+        "volatility_component": volatility * 12,
+        "trend_bonus": 10 if bool(last["trend_ok"]) else 0,
+        "breakout_bonus": 8 if bool(last["breakout_ok"]) else 0,
+        "momentum_bonus": 5 if bool(last["momentum_ok"]) else 0,
+        "relative_strength_bonus": 8 if relative_strength_ok else 0,
+        "fundamental_bonus": fundamental_score * 2.5,
+    }
+
+    score = sum(score_components.values())
 
     reasons = _build_reason_list(last, relative_strength_pct, fundamental_score)
     risk = _risk_level(float(last["atr_pct"]), float(last["rsi"]))
@@ -276,6 +278,7 @@ def analyze_symbol(df, symbol, benchmark_df=None, fundamentals=None):
         "volatility": volatility,
         "avg_volume": avg_volume,
         "score": score,
+        "score_components": score_components,
         "is_candidate": is_candidate,
         "current_signal": current_signal,
         "future_signal": future_signal,
