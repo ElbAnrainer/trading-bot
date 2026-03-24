@@ -1,0 +1,35 @@
+{
+  "CF": {
+    "trades": 58,
+    "wins": 34,
+    "losses": 24,
+    "pnl_total": 729.76,
+    "avg_pnl": 12.58,
+    "hit_rate": 58.62,
+    "avg_score": 137.0,
+    "confidence": 1.0,
+    "learned_bonus": 4.24
+  },
+  "SNDK": {
+    "trades": 14,
+    "wins": 14,
+    "losses": 0,
+    "pnl_total": 3797.46,
+    "avg_pnl": 271.25,
+    "hit_rate": 100.0,
+    "avg_score": 124.07,
+    "confidence": 1.0,
+    "learned_bonus": 20.0
+  },
+  "WDC": {
+    "trades": 120,
+    "wins": 56,
+    "losses": 64,
+    "pnl_total": 365.6,
+    "avg_pnl": 3.05,
+    "hit_rate": 46.67,
+    "avg_score": 119.17,
+    "confidence": 1.0,
+    "learned_bonus": -0.06
+  }
+}

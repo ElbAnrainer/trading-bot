@@ -14,14 +14,20 @@ from config import (
 from broker import Broker
 from cache_utils import get_cached_metadata, preload_metadata
 from data_loader import (
-    load_data,
-    load_data_batch,
-    load_fx_to_eur_data,
     latest_rate_to_eur,
     fx_rate_to_eur_at,
     fallback_rate_to_eur,
     load_ticker_metadata,
     fetch_dynamic_universe,
+)
+from market_data_cache import (
+    load_benchmark_cached,
+    load_data_batch_cached,
+    load_fx_to_eur_data_cached,
+)
+from score_learning import (
+    apply_learning_to_candidates,
+    print_learning_summary,
 )
 from strategy import (
     add_signals,
@@ -57,6 +63,11 @@ PROGRESS_BAR_WIDTH = 30
 LIVE_BLOCK_HEIGHT = 10
 LIVE_BOX_WIDTH = 100
 MAX_ANALYSIS_WORKERS = 8
+
+SCREENING_TTL_SECONDS = 900
+BACKTEST_TTL_SECONDS = 900
+BENCHMARK_TTL_SECONDS = 900
+FX_TTL_SECONDS = 3600
 
 _LIVE_INITIALIZED = False
 
@@ -499,14 +510,19 @@ def run_analysis(
 
     metadata_cache = preload_metadata(all_symbols, load_ticker_metadata)
 
-    screening_batch_data = load_data_batch(
+    screening_batch_data = load_data_batch_cached(
         all_symbols,
         screening_period,
         interval,
-        chunk_size=50,
-        pause_seconds=0.0,
+        ttl_seconds=SCREENING_TTL_SECONDS,
+        max_workers=MAX_ANALYSIS_WORKERS,
     )
-    screening_benchmark_df = load_data(BENCHMARK_SYMBOL, screening_period, interval)
+    screening_benchmark_df = load_benchmark_cached(
+        BENCHMARK_SYMBOL,
+        screening_period,
+        interval,
+        ttl_seconds=BENCHMARK_TTL_SECONDS,
+    )
 
     analyzed = []
     diagnostics_to_print = []
@@ -557,11 +573,14 @@ def run_analysis(
                 top_symbol=_find_top_symbol(analyzed, []),
             )
 
+    analyzed = apply_learning_to_candidates(analyzed, min_trades=3)
+
     future_candidates = build_future_candidates(analyzed, RECOMMENDATION_TOP_N)
     future_candidates = _enrich_with_company_names(future_candidates, metadata_cache)
 
     screened = [x for x in analyzed if x["is_candidate"]]
     screened.sort(key=lambda x: x["score"], reverse=True)
+    analyzed_by_symbol = {item["symbol"]: item for item in analyzed}
 
     fallback_used = False
     if not screened:
@@ -573,14 +592,15 @@ def run_analysis(
     results = []
     portfolio = {}
     fx_cache = {}
+    backtest_batch_data = {}
 
     if selected_symbols:
-        backtest_batch_data = load_data_batch(
+        backtest_batch_data = load_data_batch_cached(
             selected_symbols,
             period,
             interval,
-            chunk_size=25,
-            pause_seconds=0.0,
+            ttl_seconds=BACKTEST_TTL_SECONDS,
+            max_workers=MAX_ANALYSIS_WORKERS,
         )
 
         backtest_started_at = time.perf_counter()
@@ -609,7 +629,12 @@ def run_analysis(
             )
 
             if native_currency not in fx_cache:
-                fx_df = load_fx_to_eur_data(native_currency, period, interval)
+                fx_df = load_fx_to_eur_data_cached(
+                    native_currency,
+                    period,
+                    interval,
+                    ttl_seconds=FX_TTL_SECONDS,
+                )
                 fx_cache[native_currency] = {
                     "df": fx_df,
                     "latest": latest_rate_to_eur(
@@ -640,11 +665,16 @@ def run_analysis(
             result["isin"] = meta.get("isin", "-")
             result["wkn"] = meta.get("wkn", "-")
             result["signal"] = signal or "HOLD"
+            result["signal_price_eur"] = price_eur
+            result["signal_price_native"] = price_native
 
-            analyzed_match = next((x for x in analyzed if x["symbol"] == symbol), None)
+            analyzed_match = analyzed_by_symbol.get(symbol)
             if analyzed_match:
                 result["score"] = analyzed_match.get("score", 0.0)
                 result["reasons"] = analyzed_match.get("reasons", [])
+                result["score_before_learning"] = analyzed_match.get("score_before_learning", result["score"])
+                result["learned_bonus"] = analyzed_match.get("learned_bonus", 0.0)
+                result["learned_confidence"] = analyzed_match.get("learned_confidence", 0.0)
 
             if signal and price_eur is not None and price_native is not None:
                 log_trade_decision(
@@ -701,6 +731,7 @@ def run_analysis(
             results=[],
             portfolio={},
         )
+        print_learning_summary()
         print_performance()
         build_dashboard()
         return {
@@ -723,27 +754,13 @@ def run_analysis(
     print_buy_blockers_summary(collect_buy_blockers(analyzed))
 
     for result in results:
-        meta_currency = result["native_currency"]
-        fx_info = fx_cache.get(meta_currency)
-
-        if fx_info is None:
-            fx_df = load_fx_to_eur_data(meta_currency, period, interval)
-            fx_info = {
-                "df": fx_df,
-                "latest": latest_rate_to_eur(
-                    fx_df,
-                    fallback_rate_to_eur(meta_currency),
-                ),
-            }
-            fx_cache[meta_currency] = fx_info
-
-        signal, price_eur, price_native = get_signal_from_df(
-            backtest_batch_data[result["symbol"]],
-            fx_info["latest"],
-        )
+        signal = result.get("signal")
+        price_eur = result.get("signal_price_eur")
+        price_native = result.get("signal_price_native")
+        native_currency = result["native_currency"]
 
         if signal and price_eur is not None and price_native is not None:
-            print_recommendation(result["symbol"], signal, price_eur, price_native, meta_currency)
+            print_recommendation(result["symbol"], signal, price_eur, price_native, native_currency)
 
         print_financial_overview(
             result["initial_cash_eur"],
@@ -779,6 +796,7 @@ def run_analysis(
         portfolio=portfolio,
     )
 
+    print_learning_summary()
     print_performance()
     build_dashboard()
 
