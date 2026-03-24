@@ -93,3 +93,5 @@ backup_refactor_*/
 # CI / Deployment Artifacts
 # =========================
 *.sqlite3
+refactor_artifacts_bundle.zip
+*.pyc
