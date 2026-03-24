@@ -1,5 +1,6 @@
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import (
     INITIAL_CASH_EUR,
@@ -11,6 +12,7 @@ from config import (
     BENCHMARK_SYMBOL,
 )
 from broker import Broker
+from cache_utils import get_cached_metadata, preload_metadata
 from data_loader import (
     load_data,
     load_data_batch,
@@ -51,8 +53,12 @@ from performance import print_performance
 from dashboard import build_dashboard
 
 
-PROGRESS_BAR_WIDTH = 24
-PROGRESS_LINE_WIDTH = 140
+PROGRESS_BAR_WIDTH = 30
+LIVE_BLOCK_HEIGHT = 10
+LIVE_BOX_WIDTH = 100
+MAX_ANALYSIS_WORKERS = 8
+
+_LIVE_INITIALIZED = False
 
 
 def _fit_text(text, width):
@@ -78,42 +84,218 @@ def _format_eta(seconds):
 
 def _render_progress_bar(current, total, width=PROGRESS_BAR_WIDTH):
     if total <= 0:
-        return "░" * width, 0.0
+        return "." * width, 0.0
 
     ratio = min(max(current / total, 0.0), 1.0)
     filled = int(round(ratio * width))
-    bar = "█" * filled + "░" * (width - filled)
-    return bar, ratio * 100
+    bar = "#" * filled + "." * (width - filled)
+    return bar, ratio * 100.0
 
 
-def print_progress(current, total, phase, symbol="", name="", started_at=None):
+def _is_live_terminal():
+    return sys.stdout.isatty()
+
+
+def _compute_hit_rate(results):
+    wins = 0
+    closed = 0
+
+    for result in results:
+        for trade in result.get("closed_trades", []):
+            closed += 1
+            if float(trade.get("pnl_eur", 0.0)) > 0:
+                wins += 1
+
+    if closed == 0:
+        return 0.0
+
+    return (wins / closed) * 100.0
+
+
+def _find_top_symbol(analyzed, results):
+    best_symbol = "-"
+    best_score = None
+
+    for item in analyzed:
+        score = item.get("score")
+        if score is None:
+            continue
+        if best_score is None or score > best_score:
+            best_score = score
+            best_symbol = item.get("symbol", "-")
+
+    best_pnl_symbol = "-"
+    best_pnl = None
+
+    for result in results:
+        pnl = result.get("pnl_eur")
+        if pnl is None:
+            continue
+        if best_pnl is None or pnl > best_pnl:
+            best_pnl = pnl
+            best_pnl_symbol = result.get("symbol", "-")
+
+    if best_pnl_symbol != "-":
+        return f"{best_symbol} | P/L: {best_pnl_symbol}"
+
+    return best_symbol
+
+
+def _box_top(title):
+    inner_width = LIVE_BOX_WIDTH - 2
+    title = f" {title} "
+    dash_total = max(inner_width - len(title), 0)
+    left = dash_total // 2
+    right = dash_total - left
+    return "+" + ("-" * left) + title + ("-" * right) + "+"
+
+
+def _box_line(content=""):
+    inner_width = LIVE_BOX_WIDTH - 2
+    return "|" + _fit_text(content, inner_width).ljust(inner_width) + "|"
+
+
+def _box_bottom():
+    return "+" + ("-" * (LIVE_BOX_WIDTH - 2)) + "+"
+
+
+def _render_live_lines(
+    phase,
+    current,
+    total,
+    symbol,
+    name,
+    started_at,
+    analyzed_count=0,
+    selected_count=0,
+    results=None,
+    top_symbol="-",
+):
+    if results is None:
+        results = []
+
     bar, pct = _render_progress_bar(current, total)
 
-    eta = ""
+    elapsed = 0.0
+    eta = "-"
     if started_at is not None and current > 0 and total > 0:
         elapsed = time.perf_counter() - started_at
         avg = elapsed / current
         remaining = avg * (total - current)
-        eta = f" | ETA: {_format_eta(remaining)}"
+        eta = _format_eta(remaining)
 
-    symbol_part = symbol or "-"
-    name_part = f" ({_fit_text(name, 28)})" if name else ""
+    symbol_text = symbol or "-"
+    name_text = name or "-"
+    hit_rate = _compute_hit_rate(results)
+    total_pnl = sum(float(r.get("pnl_eur", 0.0)) for r in results)
+    backtests_done = len(results)
 
-    msg = (
-        f"[{bar}] "
-        f"{pct:6.2f}% | "
-        f"{phase:<10} | "
-        f"{current:>3}/{total:<3} | "
-        f"{symbol_part}{name_part}"
-        f"{eta}"
-    )
+    return [
+        _box_top("LIVE PAPER-TRADING TERMINAL"),
+        _box_line(f"Phase        : {phase}"),
+        _box_line(
+            f"Fortschritt  : {current}/{total} | {pct:6.2f}% | ETA: {eta} | Laufzeit: {_format_eta(elapsed)}"
+        ),
+        _box_line(f"Progress-Bar : [{bar}]"),
+        _box_line(f"Symbol       : {symbol_text} | Firma: {_fit_text(name_text, 60)}"),
+        _box_line(
+            f"Analyse      : Kandidaten: {analyzed_count} | Auswahl: {selected_count} | Backtests: {backtests_done}"
+        ),
+        _box_line(
+            f"Statistik    : Trefferquote: {hit_rate:6.2f}% | Sim-P/L: {total_pnl:10.2f} EUR"
+        ),
+        _box_line(f"Top-Symbol   : {top_symbol}"),
+        _box_line("Hinweis      : Keine echten Orders. Keine Broker-Anbindung. Nur Analyse / Backtesting."),
+        _box_bottom(),
+    ]
 
-    sys.stdout.write("\r" + msg.ljust(PROGRESS_LINE_WIDTH))
+
+def _init_live_terminal():
+    global _LIVE_INITIALIZED
+
+    if not _is_live_terminal() or _LIVE_INITIALIZED:
+        return
+
+    sys.stdout.write("\033[?25l")
+    sys.stdout.write("\n" * LIVE_BLOCK_HEIGHT)
+    sys.stdout.write(f"\033[{LIVE_BLOCK_HEIGHT}A")
+    sys.stdout.write("\033[s")
+    sys.stdout.flush()
+    _LIVE_INITIALIZED = True
+
+
+def _restore_live_home():
+    if _is_live_terminal() and _LIVE_INITIALIZED:
+        sys.stdout.write("\033[u")
+        sys.stdout.flush()
+
+
+def _draw_live_block(lines):
+    if not _is_live_terminal():
+        return
+
+    _init_live_terminal()
+    _restore_live_home()
+
+    for line in lines:
+        sys.stdout.write("\r\033[2K" + line + "\n")
+
+    _restore_live_home()
     sys.stdout.flush()
 
 
-def clear_progress_line():
-    sys.stdout.write("\r" + (" " * PROGRESS_LINE_WIDTH) + "\r")
+def update_live_terminal(
+    phase,
+    current,
+    total,
+    symbol="",
+    name="",
+    started_at=None,
+    analyzed_count=0,
+    selected_count=0,
+    results=None,
+    top_symbol="-",
+):
+    if results is None:
+        results = []
+
+    if _is_live_terminal():
+        lines = _render_live_lines(
+            phase=phase,
+            current=current,
+            total=total,
+            symbol=symbol,
+            name=name,
+            started_at=started_at,
+            analyzed_count=analyzed_count,
+            selected_count=selected_count,
+            results=results,
+            top_symbol=top_symbol,
+        )
+        _draw_live_block(lines)
+        return
+
+    bar, pct = _render_progress_bar(current, total)
+    msg = (
+        f"[{bar}] {pct:6.2f}% | {phase:<10} | {current:>3}/{total:<3} | "
+        f"{symbol} ({_fit_text(name, 28)})"
+    )
+    sys.stdout.write("\r" + msg.ljust(140))
+    sys.stdout.flush()
+
+
+def finish_live_terminal():
+    global _LIVE_INITIALIZED
+
+    if _is_live_terminal() and _LIVE_INITIALIZED:
+        _restore_live_home()
+        sys.stdout.write(f"\033[{LIVE_BLOCK_HEIGHT}B")
+        sys.stdout.write("\033[?25h")
+        sys.stdout.flush()
+        _LIVE_INITIALIZED = False
+        return
+
+    sys.stdout.write("\r" + (" " * 140) + "\r")
     sys.stdout.flush()
 
 
@@ -266,6 +448,42 @@ def _journal_closed_trades(result):
         }
 
 
+def _choose_screening_period(period):
+    mapping = {
+        "1d": "1d",
+        "5d": "5d",
+        "1wk": "5d",
+        "1mo": "1mo",
+        "3mo": "1mo",
+        "6mo": "3mo",
+        "1y": "3mo",
+        "2y": "6mo",
+        "3y": "6mo",
+    }
+    return mapping.get(period, "3mo")
+
+
+def _analyze_one_symbol(symbol, df, benchmark_df, metadata_cache, min_volume):
+    meta = metadata_cache.get(symbol, {})
+    fundamentals = meta.get("fundamentals", {})
+
+    info = analyze_symbol(
+        df=df,
+        symbol=symbol,
+        benchmark_df=benchmark_df,
+        fundamentals=fundamentals,
+    )
+    if not info:
+        return None
+
+    info["company_name"] = meta.get("name", symbol)
+
+    if info.get("avg_volume", 0) < min_volume:
+        return None
+
+    return info
+
+
 def run_analysis(
     period,
     top_n=DEFAULT_TOP_N,
@@ -277,65 +495,70 @@ def run_analysis(
     print_simulation_notice()
 
     all_symbols = fetch_dynamic_universe()
-    batch_data = load_data_batch(
+    screening_period = _choose_screening_period(period)
+
+    metadata_cache = preload_metadata(all_symbols, load_ticker_metadata)
+
+    screening_batch_data = load_data_batch(
         all_symbols,
-        period,
+        screening_period,
         interval,
-        chunk_size=25,
-        pause_seconds=0.2,
+        chunk_size=50,
+        pause_seconds=0.0,
     )
-    benchmark_df = load_data(BENCHMARK_SYMBOL, period, interval)
+    screening_benchmark_df = load_data(BENCHMARK_SYMBOL, screening_period, interval)
 
     analyzed = []
-    metadata_cache = {}
+    diagnostics_to_print = []
 
     screening_started_at = time.perf_counter()
-    screening_total = len(batch_data)
+    screening_total = len(screening_batch_data)
 
-    for idx, (symbol, df) in enumerate(batch_data.items(), 1):
-        if symbol not in metadata_cache:
-            metadata_cache[symbol] = load_ticker_metadata(symbol)
+    futures = []
+    completed = 0
 
-        meta = metadata_cache[symbol]
-        fundamentals = meta.get("fundamentals", {})
+    with ThreadPoolExecutor(max_workers=MAX_ANALYSIS_WORKERS) as executor:
+        for symbol, df in screening_batch_data.items():
+            futures.append(
+                executor.submit(
+                    _analyze_one_symbol,
+                    symbol,
+                    df,
+                    screening_benchmark_df,
+                    metadata_cache,
+                    min_volume,
+                )
+            )
 
-        print_progress(
-            current=idx,
-            total=screening_total,
-            phase="Analyse",
-            symbol=symbol,
-            name=meta.get("name", ""),
-            started_at=screening_started_at,
-        )
-
-        info = analyze_symbol(
-            df=df,
-            symbol=symbol,
-            benchmark_df=benchmark_df,
-            fundamentals=fundamentals,
-        )
-
-        if info:
-            info["company_name"] = meta.get("name", symbol)
-
-            if long_mode:
-                clear_progress_line()
-                print_diagnostics(info)
-
-            if info["avg_volume"] >= min_volume:
+        for future in as_completed(futures):
+            completed += 1
+            info = future.result()
+            if info:
                 analyzed.append(info)
+                if long_mode:
+                    diagnostics_to_print.append(info)
 
-    clear_progress_line()
+                current_symbol = info.get("symbol", "-")
+                current_name = info.get("company_name", "-")
+            else:
+                current_symbol = "-"
+                current_name = "-"
+
+            update_live_terminal(
+                phase="Analyse",
+                current=completed,
+                total=screening_total,
+                symbol=current_symbol,
+                name=current_name,
+                started_at=screening_started_at,
+                analyzed_count=len(analyzed),
+                selected_count=0,
+                results=[],
+                top_symbol=_find_top_symbol(analyzed, []),
+            )
 
     future_candidates = build_future_candidates(analyzed, RECOMMENDATION_TOP_N)
     future_candidates = _enrich_with_company_names(future_candidates, metadata_cache)
-
-    if long_mode:
-        print_future_candidates(future_candidates)
-    else:
-        print_future_candidates_compact(future_candidates)
-
-    print_buy_blockers_summary(collect_buy_blockers(analyzed))
 
     screened = [x for x in analyzed if x["is_candidate"]]
     screened.sort(key=lambda x: x["score"], reverse=True)
@@ -346,6 +569,121 @@ def run_analysis(
         screened = sorted(analyzed, key=lambda x: x["score"], reverse=True)
 
     selected_symbols = [x["symbol"] for x in screened[:top_n]]
+
+    results = []
+    portfolio = {}
+    fx_cache = {}
+
+    if selected_symbols:
+        backtest_batch_data = load_data_batch(
+            selected_symbols,
+            period,
+            interval,
+            chunk_size=25,
+            pause_seconds=0.0,
+        )
+
+        backtest_started_at = time.perf_counter()
+        backtest_total = len(selected_symbols)
+
+        for idx, symbol in enumerate(selected_symbols, 1):
+            df = backtest_batch_data.get(symbol)
+            if df is None or df.empty:
+                continue
+
+            meta = metadata_cache.get(symbol) or get_cached_metadata(symbol, load_ticker_metadata)
+            metadata_cache[symbol] = meta
+            native_currency = meta.get("currency", "USD")
+
+            update_live_terminal(
+                phase="Backtest",
+                current=idx,
+                total=backtest_total,
+                symbol=symbol,
+                name=meta.get("name", ""),
+                started_at=backtest_started_at,
+                analyzed_count=len(analyzed),
+                selected_count=len(selected_symbols),
+                results=results,
+                top_symbol=_find_top_symbol(analyzed, results),
+            )
+
+            if native_currency not in fx_cache:
+                fx_df = load_fx_to_eur_data(native_currency, period, interval)
+                fx_cache[native_currency] = {
+                    "df": fx_df,
+                    "latest": latest_rate_to_eur(
+                        fx_df,
+                        fallback_rate_to_eur(native_currency),
+                    ),
+                }
+
+            fx_df = fx_cache[native_currency]["df"]
+            rate_to_eur_latest = fx_cache[native_currency]["latest"]
+
+            signal, price_eur, price_native = get_signal_from_df(
+                df,
+                rate_to_eur_latest,
+            )
+
+            result = backtest_from_df(
+                df,
+                native_currency,
+                fx_df,
+                rate_to_eur_latest,
+            )
+            if not result:
+                continue
+
+            result["symbol"] = symbol
+            result["company_name"] = meta.get("name", symbol)
+            result["isin"] = meta.get("isin", "-")
+            result["wkn"] = meta.get("wkn", "-")
+            result["signal"] = signal or "HOLD"
+
+            analyzed_match = next((x for x in analyzed if x["symbol"] == symbol), None)
+            if analyzed_match:
+                result["score"] = analyzed_match.get("score", 0.0)
+                result["reasons"] = analyzed_match.get("reasons", [])
+
+            if signal and price_eur is not None and price_native is not None:
+                log_trade_decision(
+                    symbol=symbol,
+                    company=meta.get("name", symbol),
+                    signal=signal,
+                    price_eur=price_eur,
+                    score=result.get("score", 0.0),
+                    reason=", ".join(result.get("reasons", [])),
+                    closed_trade=False,
+                    realized_pnl_eur=0.0,
+                )
+
+            for trade_info in _journal_closed_trades(result):
+                log_trade_decision(
+                    symbol=symbol,
+                    company=meta.get("name", symbol),
+                    signal="SELL",
+                    price_eur=price_eur if price_eur is not None else 0.0,
+                    score=trade_info["score"],
+                    reason=trade_info["reason"],
+                    closed_trade=trade_info["closed_trade"],
+                    realized_pnl_eur=trade_info["realized_pnl_eur"],
+                )
+
+            if signal == "BUY" and price_eur is not None and price_native is not None:
+                portfolio[symbol] = {
+                    "qty": 10,
+                    "price_eur": price_eur,
+                    "price_native": price_native,
+                    "native_currency": native_currency,
+                    "company_name": meta.get("name", symbol),
+                }
+            elif signal == "SELL" and symbol in portfolio:
+                del portfolio[symbol]
+
+            results.append(result)
+
+    finish_live_terminal()
 
     if fallback_used and analyzed:
         print("\nHinweis: Keine Aktie hat alle Filter erfüllt.")
@@ -373,98 +711,39 @@ def run_analysis(
             "future_candidates": future_candidates,
         }
 
-    results = []
-    portfolio = {}
-    fx_cache = {}
+    if long_mode:
+        for info in diagnostics_to_print:
+            print_diagnostics(info)
 
-    backtest_started_at = time.perf_counter()
-    backtest_total = len(selected_symbols)
+    if long_mode:
+        print_future_candidates(future_candidates)
+    else:
+        print_future_candidates_compact(future_candidates)
 
-    for idx, symbol in enumerate(selected_symbols, 1):
-        df = batch_data.get(symbol)
-        if df is None or df.empty:
-            continue
+    print_buy_blockers_summary(collect_buy_blockers(analyzed))
 
-        if symbol not in metadata_cache:
-            metadata_cache[symbol] = load_ticker_metadata(symbol)
+    for result in results:
+        meta_currency = result["native_currency"]
+        fx_info = fx_cache.get(meta_currency)
 
-        meta = metadata_cache[symbol]
-        native_currency = meta.get("currency", "USD")
-
-        print_progress(
-            current=idx,
-            total=backtest_total,
-            phase="Backtest",
-            symbol=symbol,
-            name=meta.get("name", ""),
-            started_at=backtest_started_at,
-        )
-
-        if native_currency not in fx_cache:
-            fx_df = load_fx_to_eur_data(native_currency, period, interval)
-            fx_cache[native_currency] = {
+        if fx_info is None:
+            fx_df = load_fx_to_eur_data(meta_currency, period, interval)
+            fx_info = {
                 "df": fx_df,
                 "latest": latest_rate_to_eur(
                     fx_df,
-                    fallback_rate_to_eur(native_currency),
+                    fallback_rate_to_eur(meta_currency),
                 ),
             }
-
-        fx_df = fx_cache[native_currency]["df"]
-        rate_to_eur_latest = fx_cache[native_currency]["latest"]
+            fx_cache[meta_currency] = fx_info
 
         signal, price_eur, price_native = get_signal_from_df(
-            df,
-            rate_to_eur_latest,
+            backtest_batch_data[result["symbol"]],
+            fx_info["latest"],
         )
-
-        result = backtest_from_df(
-            df,
-            native_currency,
-            fx_df,
-            rate_to_eur_latest,
-        )
-        if not result:
-            continue
-
-        clear_progress_line()
-
-        result["symbol"] = symbol
-        result["company_name"] = meta.get("name", symbol)
-        result["isin"] = meta.get("isin", "-")
-        result["wkn"] = meta.get("wkn", "-")
-        result["signal"] = signal or "HOLD"
-
-        analyzed_match = next((x for x in analyzed if x["symbol"] == symbol), None)
-        if analyzed_match:
-            result["score"] = analyzed_match.get("score", 0.0)
-            result["reasons"] = analyzed_match.get("reasons", [])
 
         if signal and price_eur is not None and price_native is not None:
-            print_recommendation(symbol, signal, price_eur, price_native, native_currency)
-
-            log_trade_decision(
-                symbol=symbol,
-                company=meta.get("name", symbol),
-                signal=signal,
-                price_eur=price_eur,
-                score=result.get("score", 0.0),
-                reason=", ".join(result.get("reasons", [])),
-                closed_trade=False,
-                realized_pnl_eur=0.0,
-            )
-
-        for trade_info in _journal_closed_trades(result):
-            log_trade_decision(
-                symbol=symbol,
-                company=meta.get("name", symbol),
-                signal="SELL",
-                price_eur=price_eur if price_eur is not None else 0.0,
-                score=trade_info["score"],
-                reason=trade_info["reason"],
-                closed_trade=trade_info["closed_trade"],
-                realized_pnl_eur=trade_info["realized_pnl_eur"],
-            )
+            print_recommendation(result["symbol"], signal, price_eur, price_native, meta_currency)
 
         print_financial_overview(
             result["initial_cash_eur"],
@@ -477,29 +756,14 @@ def run_analysis(
 
         if long_mode:
             print_closed_trades(
-                symbol,
+                result["symbol"],
                 result["company_name"],
                 result["isin"],
                 result["wkn"],
                 result["closed_trades"],
                 result["native_currency"],
             )
-            print_equity_curve_terminal(symbol, result["equity_curve"])
-
-        if signal == "BUY" and price_eur is not None and price_native is not None:
-            portfolio[symbol] = {
-                "qty": 10,
-                "price_eur": price_eur,
-                "price_native": price_native,
-                "native_currency": native_currency,
-                "company_name": meta.get("name", symbol),
-            }
-        elif signal == "SELL" and symbol in portfolio:
-            del portfolio[symbol]
-
-        results.append(result)
-
-    clear_progress_line()
+            print_equity_curve_terminal(result["symbol"], result["equity_curve"])
 
     results.sort(key=lambda x: x["pnl_eur"], reverse=True)
 
