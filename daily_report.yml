@@ -1,0 +1,65 @@
+name: Daily Report + Mail
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  daily-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Abhängigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install matplotlib reportlab google-auth google-auth-oauthlib google-api-python-client
+
+      - name: Google OAuth Dateien wiederherstellen
+        shell: bash
+        run: |
+          echo "${{ secrets.GOOGLE_CLIENT_SECRET_JSON_B64 }}" | base64 --decode > credentials_google.json
+          echo "${{ secrets.GOOGLE_TOKEN_JSON_B64 }}" | base64 --decode > token_google.json
+
+      - name: .env schreiben
+        shell: bash
+        run: |
+          cat > .env <<EOF
+          GOOGLE_CLIENT_SECRET_FILE=credentials_google.json
+          GOOGLE_TOKEN_FILE=token_google.json
+          MAIL_FROM=${{ secrets.MAIL_FROM }}
+          MAIL_TO=${{ secrets.MAIL_TO }}
+          MAIL_SUBJECT_PREFIX=[Trading Bot]
+          EOF
+
+      - name: Report erzeugen und per Mail versenden
+        env:
+          PYTHONPATH: .
+        run: |
+          python main.py --mail
+
+      - name: Report-Artefakte hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-report
+          path: |
+            reports/trading_report_latest.pdf
+            reports/trading_report_*.pdf
+            reports/daily_report_latest.txt
+            reports/daily_report_latest.html
+            reports/daily_report_latest.pdf
+            reports/daily_report_latest.csv
+            reports/daily_report_latest.xml
+            reports/walk_forward_latest.txt
+            reports/walk_forward_latest.html
+            reports/walk_forward_latest.pdf
+          if-no-files-found: ignore

@@ -266,7 +266,11 @@ def update_live_terminal(
     selected_count=0,
     results=None,
     top_symbol="-",
+    show_progress=True,
 ):
+    if not show_progress:
+        return
+
     if results is None:
         results = []
 
@@ -295,8 +299,11 @@ def update_live_terminal(
     sys.stdout.flush()
 
 
-def finish_live_terminal():
+def finish_live_terminal(show_progress=True):
     global _LIVE_INITIALIZED
+
+    if not show_progress:
+        return
 
     if _is_live_terminal() and _LIVE_INITIALIZED:
         _restore_live_home()
@@ -500,6 +507,7 @@ def run_analysis(
     top_n=DEFAULT_TOP_N,
     min_volume=DEFAULT_MIN_VOLUME,
     long_mode=False,
+    show_progress=True,
 ):
     interval = choose_interval(period)
 
@@ -571,6 +579,7 @@ def run_analysis(
                 selected_count=0,
                 results=[],
                 top_symbol=_find_top_symbol(analyzed, []),
+                show_progress=show_progress,
             )
 
     analyzed = apply_learning_to_candidates(analyzed, min_trades=3)
@@ -626,6 +635,7 @@ def run_analysis(
                 selected_count=len(selected_symbols),
                 results=results,
                 top_symbol=_find_top_symbol(analyzed, results),
+                show_progress=show_progress,
             )
 
             if native_currency not in fx_cache:
@@ -713,7 +723,7 @@ def run_analysis(
 
             results.append(result)
 
-    finish_live_terminal()
+    finish_live_terminal(show_progress=show_progress)
 
     if fallback_used and analyzed:
         print("\nHinweis: Keine Aktie hat alle Filter erfüllt.")

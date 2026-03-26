@@ -7753,5 +7753,65 @@
       "profit_margins": 0.28235,
       "return_on_equity": 0.65992
     }
+  },
+  "COHR": {
+    "name": "Coherent Corp.",
+    "isin": "US19247G1076",
+    "wkn": "-",
+    "currency": "USD",
+    "fundamentals": {
+      "market_cap": 51056930816,
+      "trailing_pe": 269.63367,
+      "forward_pe": 36.681343,
+      "earnings_growth": 0.73,
+      "revenue_growth": 0.175,
+      "profit_margins": 0.04657,
+      "return_on_equity": 0.032360002
+    }
+  },
+  "LITE": {
+    "name": "Lumentum Holdings Inc.",
+    "isin": "US55024U1097",
+    "wkn": "-",
+    "currency": "USD",
+    "fundamentals": {
+      "market_cap": 57262084096,
+      "trailing_pe": 232.46086,
+      "forward_pe": 53.53288,
+      "earnings_growth": null,
+      "revenue_growth": 0.655,
+      "profit_margins": 0.11951,
+      "return_on_equity": 0.29275
+    }
+  },
+  "SATS": {
+    "name": "EchoStar Corporation",
+    "isin": "-",
+    "wkn": "-",
+    "currency": "USD",
+    "fundamentals": {
+      "market_cap": 32019001344,
+      "trailing_pe": null,
+      "forward_pe": -75.44447,
+      "earnings_growth": null,
+      "revenue_growth": -0.043,
+      "profit_margins": -0.96616,
+      "return_on_equity": -1.11347
+    }
+  },
+  "VRT": {
+    "name": "Vertiv Holdings Co",
+    "isin": "-",
+    "wkn": "-",
+    "currency": "USD",
+    "fundamentals": {
+      "market_cap": 103642103808,
+      "trailing_pe": 79.43989,
+      "forward_pe": 33.905415,
+      "earnings_growth": 1.995,
+      "revenue_growth": 0.227,
+      "profit_margins": 0.13028,
+      "return_on_equity": 0.41809
+    }
   }
 }

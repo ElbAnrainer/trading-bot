@@ -1,0 +1,176 @@
+.TH TRADING-BOT 1 "2026-03-25" "trading-bot v2.4" "User Commands"
+
+.SH NAME
+trading-bot \- Paper-Trading Simulator für Aktienanalyse und Backtesting
+
+.SH SYNOPSIS
+.B python main.py
+.RI [ Optionen ]
+
+.SH DESCRIPTION
+.B trading-bot
+ist ein Analyse- und Backtesting-System für Aktien.
+
+Das System dient ausschließlich der Simulation.
+
+Es werden:
+- keine echten Orders ausgeführt
+- keine Broker angesprochen
+- keine Anlageberatung durchgeführt
+
+.SH OPTIONS
+
+.TP
+.BR -h ", " --help
+Zeigt diese Hilfe an.
+
+.TP
+.BR -p ", " --period " " PERIOD
+Analysezeitraum.
+
+Kurzformen:
+.BR 1t ", " 1w ", " 1m ", " 3m ", " 6m ", " 1j ", " 2j ", " 3j
+
+Langformen:
+.BR 1d ", " 5d ", " 1mo ", " 3mo ", " 6mo ", " 1y ", " 2y ", " 3y
+
+Ohne Angabe erfolgt eine interaktive Auswahl.
+
+.TP
+.BR -t ", " --top " " N
+Anzahl der Top-Aktien für Backtests.
+
+Standard:
+.B 5
+
+Unterstützt auch:
+.BR 10 ", " 25 ", " 1k
+
+.TP
+.BR -mv ", " --min-volume " " VOLUME
+Minimales durchschnittliches Handelsvolumen.
+
+Standard:
+.B 1000000
+
+Unterstützt auch:
+.BR 500k ", " 1m
+
+.TP
+.BR --live
+Aktiviert die Live-Fortschrittsanzeige (überschreibend im Terminal).
+
+.TP
+.BR --long
+Aktiviert die ausführliche Analyse-Ausgabe.
+
+.TP
+.BR -l
+Pro-Modus:
+
+Aktiviert gleichzeitig:
+- Live-Fortschritt
+- Detailausgabe
+- farbige Hervorhebung
+- Warnhinweise
+
+Empfohlener Modus für Analyse.
+
+.TP
+.BR --version
+Zeigt die Versionsnummer.
+
+.SH EXAMPLES
+
+.TP
+Normale Ausführung:
+.B python main.py
+
+.TP
+Mit Zeitraum:
+.B python main.py -p 3y
+
+.TP
+Mit Top-Auswahl:
+.B python main.py -t 10
+
+.TP
+Mit Volumenfilter:
+.B python main.py -mv 500k
+
+.TP
+Live-Modus:
+.B python main.py --live
+
+.TP
+Detailmodus:
+.B python main.py --long
+
+.TP
+Pro-Modus:
+.B python main.py -l
+
+.TP
+Komplett:
+.B python main.py -l -p 3y -t 10 -mv 500k
+
+.SH FILES
+
+.TP
+.B reports/
+Enthält alle generierten Reports.
+
+.TP
+.B reports/trading_journal.csv
+Simulationsjournal.
+
+.TP
+.B reports/dashboard.html
+HTML-Dashboard.
+
+.TP
+.B reports/daily_report_latest.*
+Daily Reports (txt, html, pdf, csv, xml).
+
+.TP
+.B reports/walk_forward_latest.*
+Walk-Forward-Auswertung.
+
+.TP
+.B docs/trading-bot.1
+Diese Manpage.
+
+.SH SEE ALSO
+
+.BR python (1),
+.BR man (1)
+
+Weitere Tools:
+.TP
+.B python daily_report.py
+Erzeugt einen Tagesreport.
+
+.TP
+.B python walk_forward.py
+Langfrist-Test (Walk-Forward).
+
+.TP
+.B ./check_current.sh
+Systemprüfung.
+
+.TP
+.B ./run.sh
+Startet die Simulation.
+
+.SH EXIT STATUS
+
+.TP
+.B 0
+Erfolgreich.
+
+.TP
+.B >0
+Fehler bei Ausführung.
+
+.SH AUTHOR
+Thorsten

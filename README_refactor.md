@@ -25,7 +25,8 @@ Die Ausgaben sind **keine Anlageberatung** und dürfen nicht als professionelle 
 - technische Signale wie Trend, Breakout und Momentum
 - relative Stärke gegen den Markt
 - einfaches Fundamentaldaten-Scoring
-- Score-System zur Bewertung von Aktien
+- selbstlernender Score auf Basis historischer Simulationsergebnisse
+- Walk-Forward-Test über mehrere Zeitfenster
 
 ### Währungslogik
 - automatische Umrechnung in EUR
@@ -34,11 +35,18 @@ Die Ausgaben sind **keine Anlageberatung** und dürfen nicht als professionelle 
 
 ### Output & Darstellung
 - strukturierte Konsolen-Ausgabe
-- Fortschrittsbalken mit ETA
+- Live-Terminal mit laufender Aktualisierung
 - Ranking der besten Backtests
 - Beobachtungssignale mit BUY, WATCH, SELL
 - Diagnose pro Aktie
 - Anzeige von Symbol und Firmenname
+
+### CLI / Aufruf
+- klassische Hilfe mit `python main.py --help`
+- Kurzoptionen wie `-t` für `--top`
+- Kurzoptionen wie `-mv` für `--min-volume`
+- Zahlen-Suffixe wie `500k` oder `1m`
+- klassische Manpage unter `docs/trading-bot.1`
 
 ### Simulationsjournal
 Alle Entscheidungen werden im Journal gespeichert:
