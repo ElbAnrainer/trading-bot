@@ -1,21 +1,28 @@
 import csv
+import os
 from collections import Counter, defaultdict
-from pathlib import Path
-
-from data_loader import load_ticker_metadata
+from statistics import mean
 
 
-JOURNAL_FILE_CANDIDATES = [
-    Path("reports/trading_journal.csv"),
-    Path("trading_journal.csv"),
+JOURNAL_CANDIDATES = [
+    os.path.join("reports", "trading_journal.csv"),
+    "trading_journal.csv",
 ]
 
+BOX_WIDTH = 52
 
-def _find_journal_file():
-    for path in JOURNAL_FILE_CANDIDATES:
-        if path.exists():
-            return path
-    return JOURNAL_FILE_CANDIDATES[0]
+
+def _line(char="="):
+    return char * BOX_WIDTH
+
+
+def _print_box(title, lines):
+    print("\n" + _line("="))
+    print(title)
+    print(_line("="))
+    for line in lines:
+        print(line)
+    print(_line("="))
 
 
 def _to_float(value, default=0.0):
@@ -27,197 +34,234 @@ def _to_float(value, default=0.0):
         return default
 
 
-def _load_rows():
-    journal_file = _find_journal_file()
+def _find_journal_path():
+    for path in JOURNAL_CANDIDATES:
+        if os.path.exists(path):
+            return path
+    return JOURNAL_CANDIDATES[0]
 
-    if not journal_file.exists():
+
+def _load_journal_rows():
+    path = _find_journal_path()
+    if not os.path.exists(path):
         return []
 
-    with open(journal_file, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        return list(reader)
 
 
-def _get_company_name(symbol, cache):
-    if symbol not in cache:
-        try:
-            meta = load_ticker_metadata(symbol)
-            cache[symbol] = meta.get("name", symbol)
-        except Exception:
-            cache[symbol] = symbol
-    return cache[symbol]
+def _closed_trades(rows):
+    out = []
+    for row in rows:
+        closed_trade = str(row.get("closed_trade", "")).strip().lower() == "true"
+        if not closed_trade:
+            continue
+
+        pnl = _to_float(row.get("realized_pnl_eur", row.get("pnl_eur", 0.0)), 0.0)
+        score = _to_float(row.get("score", 0.0), 0.0)
+
+        out.append(
+            {
+                "symbol": (row.get("symbol") or "").strip(),
+                "company": (row.get("company") or "").strip(),
+                "signal": (row.get("signal") or "").strip(),
+                "reason": (row.get("reason") or "").strip(),
+                "pnl_eur": pnl,
+                "score": score,
+            }
+        )
+    return out
 
 
-def _format_symbol_with_name(symbol, cache):
-    return f"{symbol} ({_get_company_name(symbol, cache)})"
+def _all_signals(rows):
+    counts = Counter()
+    for row in rows:
+        signal = (row.get("signal") or "").strip().upper()
+        if signal:
+            counts[signal] += 1
+    return counts
+
+
+def _top_symbols(rows, limit=5):
+    counts = Counter()
+    names = {}
+
+    for row in rows:
+        symbol = (row.get("symbol") or "").strip()
+        if not symbol:
+            continue
+        counts[symbol] += 1
+        company = (row.get("company") or "").strip()
+        if company:
+            names[symbol] = company
+
+    result = []
+    for symbol, count in counts.most_common(limit):
+        result.append(
+            {
+                "symbol": symbol,
+                "company": names.get(symbol, symbol),
+                "count": count,
+            }
+        )
+    return result
+
+
+def _score_validation_rows(trades):
+    by_symbol = defaultdict(
+        lambda: {
+            "company": "",
+            "scores": [],
+            "pnls": [],
+            "wins": 0,
+            "trades": 0,
+        }
+    )
+
+    for trade in trades:
+        symbol = trade["symbol"] or "-"
+        by_symbol[symbol]["company"] = trade.get("company") or symbol
+        by_symbol[symbol]["scores"].append(trade["score"])
+        by_symbol[symbol]["pnls"].append(trade["pnl_eur"])
+        by_symbol[symbol]["trades"] += 1
+        if trade["pnl_eur"] > 0:
+            by_symbol[symbol]["wins"] += 1
+
+    result_rows = []
+    for symbol, data in by_symbol.items():
+        trades_count = data["trades"]
+        total_pnl = sum(data["pnls"])
+        avg_score = mean(data["scores"]) if data["scores"] else 0.0
+        hit_rate = (data["wins"] / trades_count * 100.0) if trades_count else 0.0
+
+        result_rows.append(
+            {
+                "symbol": symbol,
+                "company": data["company"],
+                "avg_score": avg_score,
+                "total_pnl": total_pnl,
+                "trades": trades_count,
+                "hit_rate": hit_rate,
+            }
+        )
+
+    result_rows.sort(
+        key=lambda x: (
+            x["total_pnl"],
+            x["hit_rate"],
+            x["trades"],
+            x["avg_score"],
+        ),
+        reverse=True,
+    )
+    return result_rows
 
 
 def analyze_performance():
-    rows = _load_rows()
+    rows = _load_journal_rows()
+    trades = _closed_trades(rows)
+    signal_counts = _all_signals(rows)
 
-    if not rows:
-        return None
+    closed_count = len(trades)
+    wins = sum(1 for t in trades if t["pnl_eur"] > 0)
+    losses = sum(1 for t in trades if t["pnl_eur"] < 0)
+    total_pnl = sum(t["pnl_eur"] for t in trades)
+    avg_trade = (total_pnl / closed_count) if closed_count else 0.0
+    hit_rate = (wins / closed_count * 100.0) if closed_count else 0.0
+    top_symbols = _top_symbols(rows, limit=5)
+    score_rows = _score_validation_rows(trades)
 
-    stats = {
-        "total_entries": len(rows),
-        "buy_count": 0,
-        "sell_count": 0,
-        "watch_count": 0,
-        "hold_count": 0,
-        "unique_symbols": 0,
-        "top_symbols": [],
-        "per_symbol": {},
-        "score_validation": [],
-        "closed_trades": 0,
-        "win_trades": 0,
-        "loss_trades": 0,
-        "realized_pnl_eur": 0.0,
-        "avg_trade_pnl_eur": 0.0,
-        "hit_rate_pct": 0.0,
-    }
-
-    signal_counter = Counter()
-    symbol_counter = Counter()
-
-    per_symbol = defaultdict(lambda: {
-        "trades": 0,
-        "wins": 0,
-        "losses": 0,
-        "pnl": 0.0,
-        "scores": [],
-    })
-
-    for row in rows:
-        signal = (row.get("signal") or "").strip().upper()
-        symbol = (row.get("symbol") or "").strip()
-        score = _to_float(row.get("score"), None)
-
-        if signal:
-            signal_counter[signal] += 1
-
-        if symbol:
-            symbol_counter[symbol] += 1
-
-        is_closed_trade = str(row.get("closed_trade", "")).strip().lower() == "true"
-        pnl = _to_float(row.get("realized_pnl_eur"), 0.0)
-
-        if symbol and score is not None:
-            per_symbol[symbol]["scores"].append(score)
-
-        if is_closed_trade:
-            stats["closed_trades"] += 1
-            stats["realized_pnl_eur"] += pnl
-
-            if symbol:
-                ps = per_symbol[symbol]
-                ps["trades"] += 1
-                ps["pnl"] += pnl
-
-                if pnl > 0:
-                    ps["wins"] += 1
-                    stats["win_trades"] += 1
-                elif pnl < 0:
-                    ps["losses"] += 1
-                    stats["loss_trades"] += 1
-
-    stats["buy_count"] = signal_counter.get("BUY", 0)
-    stats["sell_count"] = signal_counter.get("SELL", 0)
-    stats["watch_count"] = signal_counter.get("WATCH", 0)
-    stats["hold_count"] = signal_counter.get("HOLD", 0)
-    stats["unique_symbols"] = len(symbol_counter)
-    stats["top_symbols"] = symbol_counter.most_common(5)
-
-    if stats["closed_trades"] > 0:
-        stats["avg_trade_pnl_eur"] = stats["realized_pnl_eur"] / stats["closed_trades"]
-        stats["hit_rate_pct"] = (stats["win_trades"] / stats["closed_trades"]) * 100.0
-
-    final_per_symbol = {}
-    score_validation = []
-
-    for sym, ps in per_symbol.items():
-        trades = ps["trades"]
-        if trades == 0:
-            continue
-
-        avg = ps["pnl"] / trades
-        hit = (ps["wins"] / trades * 100.0) if trades > 0 else 0.0
-        avg_score = sum(ps["scores"]) / len(ps["scores"]) if ps["scores"] else 0.0
-
-        final_per_symbol[sym] = {
-            "trades": trades,
-            "pnl": ps["pnl"],
-            "avg": avg,
-            "hit": hit,
-            "score": avg_score,
+    unique_symbols = len(
+        {
+            (row.get("symbol") or "").strip()
+            for row in rows
+            if (row.get("symbol") or "").strip()
         }
+    )
 
-        score_validation.append({
-            "symbol": sym,
-            "score": avg_score,
-            "pnl": ps["pnl"],
-            "trades": trades,
-            "hit": hit,
-        })
-
-    stats["per_symbol"] = final_per_symbol
-    stats["score_validation"] = score_validation
-
-    return stats
+    return {
+        "journal_entries": len(rows),
+        "buy_signals": signal_counts.get("BUY", 0),
+        "sell_signals": signal_counts.get("SELL", 0),
+        "watch_signals": signal_counts.get("WATCH", 0),
+        "hold_signals": signal_counts.get("HOLD", 0),
+        "unique_symbols": unique_symbols,
+        "closed_trades": closed_count,
+        "winning_trades": wins,
+        "losing_trades": losses,
+        "hit_rate": hit_rate,
+        "realized_pnl": total_pnl,
+        "avg_trade_pnl": avg_trade,
+        "top_symbols": top_symbols,
+        "score_validation": score_rows,
+    }
 
 
 def print_performance():
-    stats = analyze_performance()
+    summary = analyze_performance()
 
-    if not stats:
-        print("\nKeine Daten vorhanden.")
-        return
+    summary_lines = [
+        f"Journal-Einträge     : {summary['journal_entries']}",
+        f"BUY Signale          : {summary['buy_signals']}",
+        f"SELL Signale         : {summary['sell_signals']}",
+        f"WATCH Signale        : {summary['watch_signals']}",
+        f"HOLD Signale         : {summary['hold_signals']}",
+        f"Aktien gesamt        : {summary['unique_symbols']}",
+        "------------------------------",
+        f"Geschlossene Trades  : {summary['closed_trades']}",
+        f"Gewinntrades         : {summary['winning_trades']}",
+        f"Verlusttrades        : {summary['losing_trades']}",
+        f"Trefferquote         : {summary['hit_rate']:.2f} %",
+        f"Realisierter P/L     : {summary['realized_pnl']:.2f} EUR",
+        f"Ø Trade P/L          : {summary['avg_trade_pnl']:.2f} EUR",
+    ]
 
-    name_cache = {}
+    if summary["top_symbols"]:
+        summary_lines.append("------------------------------")
+        summary_lines.append("Top Aktien nach Häufigkeit:")
+        for item in summary["top_symbols"]:
+            summary_lines.append(
+                f"  {item['symbol']} ({item['company']}): {item['count']}"
+            )
 
-    print("\n==============================")
-    print("SIMULATIONS-AUSWERTUNG")
-    print("------------------------------")
-    print(f"Trades: {stats['closed_trades']}")
-    print(f"P/L: {stats['realized_pnl_eur']:.2f} EUR")
-    print(f"Trefferquote: {stats['hit_rate_pct']:.2f}%")
-    print("------------------------------")
-
-    print("PERFORMANCE JE AKTIE:")
-
-    ranked = sorted(
-        stats["per_symbol"].items(),
-        key=lambda x: x[1]["pnl"],
-        reverse=True,
+    summary_lines.extend(
+        [
+            "------------------------------",
+            "Hinweis: Diese Auswertung basiert ausschließlich auf Simulationsdaten.",
+            "Es handelt sich nicht um Anlageberatung und nicht um echte Orderausführung.",
+        ]
     )
 
-    for sym, data in ranked[:10]:
-        label = _format_symbol_with_name(sym, name_cache)
+    _print_box("SIMULATIONS-AUSWERTUNG", summary_lines)
 
-        print(
-            f"{label}\n"
-            f"  Score: {data['score']:.1f} | "
-            f"P/L: {data['pnl']:.2f} EUR | "
-            f"Ø: {data['avg']:.2f} EUR | "
-            f"Treffer: {data['hit']:.1f}%"
-        )
+    score_lines = [
+        "Info:",
+        "  Score   : Interne Bewertung der Aktie durch das Modell.",
+        "            Höher = bessere Kombination aus Trend, Momentum und Qualität.",
+        "  P/L     : Profit/Loss → Gewinn oder Verlust pro Aktie im Backtest.",
+        "  Trades  : Anzahl abgeschlossener Trades (Kauf + Verkauf).",
+        "  Treffer : Trefferquote → Anteil der Gewinntrades in Prozent.",
+        "            Beispiel: 60% = 6 von 10 Trades waren profitabel.",
+        "------------------------------",
+    ]
 
-    print("\n------------------------------")
-    print("SCORE VALIDIERUNG:")
+    if not summary["score_validation"]:
+        score_lines.append("Keine geschlossenen Trades für Score-Validierung vorhanden.")
+    else:
+        for row in summary["score_validation"][:10]:
+            score_lines.append(
+                f"{row['symbol']}: "
+                f"Score={row['avg_score']:.2f} | "
+                f"P/L={row['total_pnl']:.2f} EUR | "
+                f"Trades={row['trades']} | "
+                f"Treffer={row['hit_rate']:.2f}%"
+            )
 
-    ranked_score = sorted(
-        stats["score_validation"],
-        key=lambda x: x["score"],
-        reverse=True,
-    )
+    _print_box("SCORE VALIDIERUNG", score_lines)
 
-    for item in ranked_score[:10]:
-        label = _format_symbol_with_name(item["symbol"], name_cache)
+    return summary
 
-        print(
-            f"{label}\n"
-            f"  Score: {item['score']:.1f} | "
-            f"P/L: {item['pnl']:.2f} EUR | "
-            f"Trades: {item['trades']} | "
-            f"Treffer: {item['hit']:.1f}%"
-        )
 
-    print("\n==============================\n")
+if __name__ == "__main__":
+    print_performance()

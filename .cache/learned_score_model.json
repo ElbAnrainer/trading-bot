@@ -1,14 +1,14 @@
 {
   "CF": {
-    "trades": 114,
-    "wins": 54,
-    "losses": 60,
-    "pnl_total": 9401.96,
-    "avg_pnl": 82.47,
-    "hit_rate": 47.37,
-    "avg_score": 106.18,
+    "trades": 128,
+    "wins": 59,
+    "losses": 69,
+    "pnl_total": 11570.01,
+    "avg_pnl": 90.39,
+    "hit_rate": 46.09,
+    "avg_score": 102.7,
     "confidence": 1.0,
-    "learned_bonus": 9.47
+    "learned_bonus": 9.22
   },
   "SNDK": {
     "trades": 14,
@@ -17,7 +17,7 @@
     "pnl_total": 3797.46,
     "avg_pnl": 271.25,
     "hit_rate": 100.0,
-    "avg_score": 117.31,
+    "avg_score": 115.94,
     "confidence": 1.0,
     "learned_bonus": 20.0
   },
@@ -88,14 +88,14 @@
     "learned_bonus": -8.33
   },
   "LYB": {
-    "trades": 43,
-    "wins": 17,
-    "losses": 26,
-    "pnl_total": 8690.2,
-    "avg_pnl": 202.1,
-    "hit_rate": 39.53,
-    "avg_score": 94.97,
+    "trades": 57,
+    "wins": 22,
+    "losses": 35,
+    "pnl_total": 10858.25,
+    "avg_pnl": 190.5,
+    "hit_rate": 38.6,
+    "avg_score": 95.7,
     "confidence": 1.0,
-    "learned_bonus": 7.91
+    "learned_bonus": 7.72
   }
 }

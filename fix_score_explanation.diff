@@ -1,0 +1,23 @@
+diff --git a/performance.py b/performance.py
+--- a/performance.py
++++ b/performance.py
+@@
+     print("\n==============================")
+     print("SCORE VALIDIERUNG:")
+     print("------------------------------")
+ 
++    # 👉 Erklärungsblock (Einsteiger / Kontext)
++    print("Info:")
++    print("  Score     : Interne Bewertung der Aktie durch das Modell.")
++    print("              Höher = bessere Kombination aus Trend, Momentum und Qualität.")
++    print("  P/L       : Profit/Loss → Gewinn oder Verlust pro Aktie im Backtest.")
++    print("  Trades    : Anzahl abgeschlossener Trades (Kauf + Verkauf).")
++    print("  Treffer   : Trefferquote → Anteil der Gewinntrades in %.") 
++    print("              Beispiel: 60% = 6 von 10 Trades waren profitabel.")
++    print("------------------------------")
++
+     for row in rows:
+         print(
+             f"{row['symbol']}: "
+             f"Score={row['avg_score']:.2f} | "
+             f"P/L={row['total_pnl']:.2f} EUR | "
