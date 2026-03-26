@@ -107,6 +107,14 @@ def _is_live_terminal():
     return sys.stdout.isatty()
 
 
+def _result_hit_rate(result):
+    closed_trades = result.get("closed_trades", [])
+    if not closed_trades:
+        return 0.0
+    wins = sum(1 for trade in closed_trades if float(trade.get("pnl_eur", 0.0)) > 0)
+    return (wins / len(closed_trades)) * 100.0
+
+
 def _compute_hit_rate(results):
     wins = 0
     closed = 0
@@ -123,32 +131,41 @@ def _compute_hit_rate(results):
     return (wins / closed) * 100.0
 
 
+def _historical_performance_rank(item):
+    """
+    Echte Vorauswahl eher nach historischer Simulationsleistung statt nur nach Roh-Score.
+    Fallback bleibt der Score, wenn es noch kaum Historie gibt.
+    """
+    score = float(item.get("score", 0.0))
+    learned_bonus = float(item.get("learned_bonus", 0.0))
+    confidence = float(item.get("learned_confidence", 0.0))
+
+    if confidence > 0:
+        return learned_bonus * 100.0 + confidence * 10.0 + score * 0.05
+
+    return score
+
+
 def _find_top_symbol(analyzed, results):
+    if results:
+        best = sorted(
+            results,
+            key=lambda x: (
+                float(x.get("pnl_eur", 0.0)),
+                float(x.get("hit_rate_pct", 0.0)),
+                int(x.get("trade_count", 0)),
+            ),
+            reverse=True,
+        )[0]
+        return f"{best.get('symbol', '-')} | P/L {float(best.get('pnl_eur', 0.0)):.2f}"
+
     best_symbol = "-"
-    best_score = None
-
+    best_rank = None
     for item in analyzed:
-        score = item.get("score")
-        if score is None:
-            continue
-        if best_score is None or score > best_score:
-            best_score = score
+        rank = _historical_performance_rank(item)
+        if best_rank is None or rank > best_rank:
+            best_rank = rank
             best_symbol = item.get("symbol", "-")
-
-    best_pnl_symbol = "-"
-    best_pnl = None
-
-    for result in results:
-        pnl = result.get("pnl_eur")
-        if pnl is None:
-            continue
-        if best_pnl is None or pnl > best_pnl:
-            best_pnl = pnl
-            best_pnl_symbol = result.get("symbol", "-")
-
-    if best_pnl_symbol != "-":
-        return f"{best_symbol} | P/L: {best_pnl_symbol}"
-
     return best_symbol
 
 
@@ -389,12 +406,16 @@ def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest):
     if end_rate > 0:
         pnl_native = pnl_eur / end_rate
 
+    trade_count = len(summary["closed_trades"])
+    hit_rate_pct = _result_hit_rate({"closed_trades": summary["closed_trades"]})
+
     return {
         "native_currency": native_currency,
         "pnl_eur": pnl_eur,
         "pnl_native": pnl_native,
         "pnl_pct_eur": pnl_pct_eur,
-        "trade_count": len(summary["closed_trades"]),
+        "trade_count": trade_count,
+        "hit_rate_pct": hit_rate_pct,
         "closed_trades": summary["closed_trades"],
         "last_price_native": last_price_native,
         "last_price_eur": last_price_native * end_rate,
@@ -407,7 +428,15 @@ def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest):
 
 
 def build_future_candidates(analyzed, top_n):
-    future = sorted(analyzed, key=lambda x: x["score"], reverse=True)
+    # Ranking jetzt nach historischer Performance, nicht nur nach Roh-Score
+    future = sorted(
+        analyzed,
+        key=lambda x: (
+            _historical_performance_rank(x),
+            float(x.get("score", 0.0)),
+        ),
+        reverse=True,
+    )
     return future[:top_n]
 
 
@@ -588,20 +617,32 @@ def run_analysis(
     future_candidates = _enrich_with_company_names(future_candidates, metadata_cache)
 
     screened = [x for x in analyzed if x["is_candidate"]]
-    screened.sort(key=lambda x: x["score"], reverse=True)
+    screened.sort(
+        key=lambda x: (
+            _historical_performance_rank(x),
+            float(x.get("score", 0.0)),
+        ),
+        reverse=True,
+    )
     analyzed_by_symbol = {item["symbol"]: item for item in analyzed}
 
     fallback_used = False
     if not screened:
         fallback_used = True
-        screened = sorted(analyzed, key=lambda x: x["score"], reverse=True)
+        screened = sorted(
+            analyzed,
+            key=lambda x: (
+                _historical_performance_rank(x),
+                float(x.get("score", 0.0)),
+            ),
+            reverse=True,
+        )
 
     selected_symbols = [x["symbol"] for x in screened[:top_n]]
 
     results = []
     portfolio = {}
     fx_cache = {}
-    backtest_batch_data = {}
 
     if selected_symbols:
         backtest_batch_data = load_data_batch_cached(
@@ -727,7 +768,7 @@ def run_analysis(
 
     if fallback_used and analyzed:
         print("\nHinweis: Keine Aktie hat alle Filter erfüllt.")
-        print("Es werden deshalb die bestbewerteten verfügbaren Aktien als Fallback genutzt.\n")
+        print("Es werden deshalb die historisch/performance-basiert besten verfügbaren Aktien als Fallback genutzt.\n")
 
     if not selected_symbols:
         print("\nKeine auswertbaren Aktien gefunden.\n")
@@ -792,7 +833,15 @@ def run_analysis(
             )
             print_equity_curve_terminal(result["symbol"], result["equity_curve"])
 
-    results.sort(key=lambda x: x["pnl_eur"], reverse=True)
+    # ECHTES PERFORMANCE-RANKING
+    results.sort(
+        key=lambda x: (
+            float(x.get("pnl_eur", 0.0)),
+            float(x.get("hit_rate_pct", 0.0)),
+            int(x.get("trade_count", 0)),
+        ),
+        reverse=True,
+    )
 
     print_ranking(results)
     print_portfolio(portfolio)

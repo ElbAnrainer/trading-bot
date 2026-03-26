@@ -1,0 +1,34 @@
+diff --git a/output.py b/output.py
+index 0000000..0000000 100644
+--- a/output.py
++++ b/output.py
+@@ -1,0 +1,35 @@
++
++def print_closed_trades(symbol, name, isin, wkn, trades, currency):
++    if not trades:
++        return
++
++    lines = [
++        f"{name}",
++        f"ISIN: {isin} | WKN: {wkn} | Währung: {currency}",
++        "-" * LINE_WIDTH,
++    ]
++
++    for t in trades:
++        pnl_eur = float(t.get("pnl_eur", 0.0))
++        pnl_str = colorize(pnl_eur, f"{pnl_eur:.2f} EUR")
++
++        buy_time = t.get("buy_time", "-")
++        sell_time = t.get("sell_time", "-")
++        reason = t.get("reason")
++
++        if reason:
++            lines.append(
++                f"{buy_time} -> {sell_time} | {pnl_str} | Grund: {reason}"
++            )
++        else:
++            lines.append(
++                f"{buy_time} -> {sell_time} | {pnl_str}"
++            )
++
++    _print_block(_headline(f"DETAILS {symbol}"), lines)

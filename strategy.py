@@ -1,295 +1,317 @@
+import math
+from typing import Dict, List, Optional
+
+import numpy as np
 import pandas as pd
 
-from config import (
-    RISK_PER_TRADE_PCT,
-    MAX_ALLOC_PCT,
-    STOP_LOSS_PCT,
-    TAKE_PROFIT_PCT,
-    EMA_FAST,
-    EMA_SLOW,
-    RSI_PERIOD,
-    RSI_BUY_MIN,
-    RSI_BUY_MAX,
-    RSI_SELL_MIN,
-    TREND_SMA,
-    BREAKOUT_LOOKBACK,
-    ATR_PERIOD,
-    MIN_ATR_PCT,
-    MIN_SCORE_FOR_BUY,
-    MIN_SCORE_FOR_WATCH,
-    RELATIVE_STRENGTH_LOOKBACK,
-    MIN_RELATIVE_STRENGTH_PCT,
-)
+
+STOP_LOSS_PCT = 0.08
+TAKE_PROFIT_PCT = 0.16
 
 
-def ema(series, span):
-    return series.ewm(span=span, adjust=False).mean()
+def stop_loss_price(entry_price: float) -> float:
+    return float(entry_price) * (1.0 - STOP_LOSS_PCT)
 
 
-def rsi(series, period=14):
-    delta = series.diff()
-    up = delta.clip(lower=0)
-    down = -delta.clip(upper=0)
-
-    ma_up = up.ewm(alpha=1 / period, adjust=False).mean()
-    ma_down = down.ewm(alpha=1 / period, adjust=False).mean()
-
-    rs = ma_up / ma_down.replace(0, 1e-9)
-    return 100 - (100 / (1 + rs))
+def take_profit_price(entry_price: float) -> float:
+    return float(entry_price) * (1.0 + TAKE_PROFIT_PCT)
 
 
-def atr(df, period=14):
-    high_low = df["High"] - df["Low"]
-    high_close = (df["High"] - df["Close"].shift(1)).abs()
-    low_close = (df["Low"] - df["Close"].shift(1)).abs()
-
-    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    return tr.rolling(period).mean()
-
-
-def add_signals(df):
-    df = df.copy()
-
-    df["ema_fast"] = ema(df["Close"], EMA_FAST)
-    df["ema_slow"] = ema(df["Close"], EMA_SLOW)
-    df["rsi"] = rsi(df["Close"], RSI_PERIOD)
-    df["sma_trend"] = df["Close"].rolling(TREND_SMA).mean()
-    df["atr"] = atr(df, ATR_PERIOD)
-    df["atr_pct"] = (df["atr"] / df["Close"]) * 100
-
-    df["breakout_high"] = df["High"].rolling(BREAKOUT_LOOKBACK).max().shift(1)
-    df["breakout_low"] = df["Low"].rolling(BREAKOUT_LOOKBACK).min().shift(1)
-
-    df["trend_ok"] = df["Close"] > df["sma_trend"]
-    df["volatility_ok"] = df["atr_pct"] >= MIN_ATR_PCT
-    df["momentum_ok"] = (
-        (df["ema_fast"] > df["ema_slow"])
-        & (df["rsi"] >= RSI_BUY_MIN)
-        & (df["rsi"] <= RSI_BUY_MAX)
-    )
-    df["breakout_ok"] = df["Close"] > df["breakout_high"]
-
-    df["buy_signal"] = (
-        df["trend_ok"]
-        & df["volatility_ok"]
-        & df["momentum_ok"]
-        & df["breakout_ok"]
-    )
-
-    df["sell_signal"] = (
-        (df["ema_fast"] < df["ema_slow"])
-        | (df["rsi"] < RSI_SELL_MIN)
-        | (df["Close"] < df["breakout_low"])
-    )
-
-    return df
-
-
-def normalize_signal_from_row(row):
-    if bool(row.get("buy_signal", False)):
-        return "BUY"
-    if bool(row.get("sell_signal", False)):
-        return "SELL"
-    return "HOLD"
-
-
-def compute_qty(cash_eur, price_eur):
+def compute_qty(cash_eur: float, price_eur: float) -> int:
     if price_eur <= 0:
         return 0
-
-    risk_budget = cash_eur * RISK_PER_TRADE_PCT
-    max_alloc_budget = cash_eur * MAX_ALLOC_PCT
-
-    risk_per_share = price_eur * STOP_LOSS_PCT
-    if risk_per_share <= 0:
-        return 0
-
-    qty_risk = int(risk_budget // risk_per_share)
-    qty_alloc = int(max_alloc_budget // price_eur)
-
-    qty = min(qty_risk, qty_alloc)
-    return max(qty, 0)
+    return max(0, int(cash_eur // price_eur))
 
 
-def stop_loss_price(entry_price):
-    return entry_price * (1 - STOP_LOSS_PCT)
+def _safe_series(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        return pd.Series(dtype=float)
+    return pd.to_numeric(df[column], errors="coerce")
 
 
-def take_profit_price(entry_price):
-    return entry_price * (1 + TAKE_PROFIT_PCT)
+def _rolling_breakout(close: pd.Series, lookback: int = 20) -> pd.Series:
+    prev_high = close.shift(1).rolling(lookback).max()
+    return close > prev_high
 
 
-def _risk_level(atr_pct, rsi_value):
-    if pd.isna(atr_pct) or pd.isna(rsi_value):
-        return "mittel"
+def _relative_strength_pct(close: pd.Series, benchmark_close: Optional[pd.Series]) -> float:
+    if benchmark_close is None or benchmark_close.empty or close.empty:
+        return 0.0
 
-    if atr_pct >= 3.0 or rsi_value >= 75:
-        return "hoch"
-    if atr_pct <= 1.2 and rsi_value < 70:
-        return "niedrig"
-    return "mittel"
+    aligned = pd.concat(
+        [
+            close.rename("stock"),
+            benchmark_close.rename("bench"),
+        ],
+        axis=1,
+        join="inner",
+    ).dropna()
 
+    if len(aligned) < 20:
+        return 0.0
 
-def _strength_label(score):
-    if score >= 45:
-        return "hoch"
-    if score >= 30:
-        return "mittel"
-    return "niedrig"
-
-
-def _build_reason_list(last, relative_strength_pct, fundamental_score):
-    reasons = []
-
-    if bool(last.get("trend_ok", False)):
-        reasons.append("über SMA200")
-    if bool(last.get("breakout_ok", False)):
-        reasons.append("Breakout")
-    if bool(last.get("momentum_ok", False)):
-        reasons.append("EMA/RSI positiv")
-    if bool(last.get("volatility_ok", False)):
-        reasons.append("ausreichende Volatilität")
-    if relative_strength_pct is not None and relative_strength_pct >= MIN_RELATIVE_STRENGTH_PCT:
-        reasons.append("stärker als Benchmark")
-    if fundamental_score >= 2:
-        reasons.append("einfach fundamental solide")
-
-    return reasons
+    stock_return = (aligned["stock"].iloc[-1] / aligned["stock"].iloc[0] - 1.0) * 100.0
+    bench_return = (aligned["bench"].iloc[-1] / aligned["bench"].iloc[0] - 1.0) * 100.0
+    return float(stock_return - bench_return)
 
 
-def _future_recommendation(score, current_signal, trend_ok, volatility_ok, relative_strength_ok):
-    if current_signal == "BUY" and trend_ok and volatility_ok and relative_strength_ok and score >= MIN_SCORE_FOR_BUY:
-        return "BUY"
-    if trend_ok and score >= MIN_SCORE_FOR_WATCH:
-        return "WATCH"
-    if current_signal == "SELL":
-        return "SELL"
-    return "HOLD"
-
-
-def _calc_return_pct(close_series, lookback):
-    if close_series is None or len(close_series) <= lookback:
-        return None
-
-    current = float(close_series.iloc[-1])
-    past = float(close_series.iloc[-1 - lookback])
-
-    if past == 0:
-        return None
-
-    return ((current / past) - 1) * 100
-
-
-def _calc_relative_strength_pct(df, benchmark_df):
-    if benchmark_df is None or benchmark_df.empty:
-        return None
-
-    stock_ret = _calc_return_pct(df["Close"], RELATIVE_STRENGTH_LOOKBACK)
-    bench_ret = _calc_return_pct(benchmark_df["Close"], RELATIVE_STRENGTH_LOOKBACK)
-
-    if stock_ret is None or bench_ret is None:
-        return None
-
-    return stock_ret - bench_ret
-
-
-def _calc_fundamental_score(fundamentals):
+def _fundamental_score(fundamentals: Optional[Dict]) -> int:
     if not fundamentals:
         return 0
 
     score = 0
 
-    earnings_growth = fundamentals.get("earnings_growth")
-    revenue_growth = fundamentals.get("revenue_growth")
-    profit_margins = fundamentals.get("profit_margins")
-    return_on_equity = fundamentals.get("return_on_equity")
-    trailing_pe = fundamentals.get("trailing_pe")
-    forward_pe = fundamentals.get("forward_pe")
-
-    if earnings_growth is not None and earnings_growth > 0:
+    pe = fundamentals.get("trailingPE")
+    if pe is not None and pe > 0 and pe < 35:
         score += 1
+
+    revenue_growth = fundamentals.get("revenueGrowth")
     if revenue_growth is not None and revenue_growth > 0:
         score += 1
-    if profit_margins is not None and profit_margins > 0:
+
+    earnings_growth = fundamentals.get("earningsGrowth")
+    if earnings_growth is not None and earnings_growth > 0:
         score += 1
-    if return_on_equity is not None and return_on_equity > 0.10:
+
+    profit_margin = fundamentals.get("profitMargins")
+    if profit_margin is not None and profit_margin > 0:
         score += 1
-    if trailing_pe is not None and 0 < trailing_pe < 35:
-        score += 1
-    if forward_pe is not None and 0 < forward_pe < 30:
+
+    debt_to_equity = fundamentals.get("debtToEquity")
+    if debt_to_equity is not None and debt_to_equity >= 0 and debt_to_equity < 150:
         score += 1
 
     return score
 
 
-def analyze_symbol(df, symbol, benchmark_df=None, fundamentals=None):
-    min_len = max(TREND_SMA, BREAKOUT_LOOKBACK, RELATIVE_STRENGTH_LOOKBACK + 1, 30)
+def _strength_label(score: float) -> str:
+    if score >= 70:
+        return "hoch"
+    if score >= 45:
+        return "mittel"
+    return "niedrig"
 
-    if df is None or df.empty or len(df) < min_len:
-        return None
 
-    df = add_signals(df)
-    last = df.iloc[-1]
+def _risk_label(volatility_pct: float, relative_strength_pct: float) -> str:
+    if volatility_pct >= 4.5:
+        return "hoch"
+    if volatility_pct >= 2.5:
+        return "mittel"
+    if relative_strength_pct < -5:
+        return "mittel"
+    return "niedrig"
 
-    if pd.isna(last["atr_pct"]) or pd.isna(last["rsi"]) or pd.isna(last["sma_trend"]):
-        return None
 
-    lookback = min(20, len(df) - 1)
-    momentum = ((last["Close"] / df["Close"].iloc[-1 - lookback]) - 1) * 100 if lookback > 0 else 0.0
-    volatility = float(last["atr_pct"])
-    avg_volume = float(df["Volume"].tail(20).mean())
-    current_signal = normalize_signal_from_row(last)
+def add_signals(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame(columns=list(df.columns) if df is not None else [])
 
-    relative_strength_pct = _calc_relative_strength_pct(df, benchmark_df)
-    relative_strength_ok = (
-        relative_strength_pct is not None and relative_strength_pct >= MIN_RELATIVE_STRENGTH_PCT
+    out = df.copy()
+
+    close = _safe_series(out, "Close")
+    high = _safe_series(out, "High")
+    low = _safe_series(out, "Low")
+    volume = _safe_series(out, "Volume")
+
+    # ------------------------------------------------------------
+    # Kompatibilitäts-Spalten für Tests / bestehende Verträge
+    # ------------------------------------------------------------
+    out["ema_fast"] = close.ewm(span=12, adjust=False).mean()
+    out["ema_slow"] = close.ewm(span=26, adjust=False).mean()
+
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean().replace(0, np.nan)
+    rs = avg_gain / avg_loss
+    out["rsi"] = 100 - (100 / (1 + rs))
+    out["rsi"] = out["rsi"].fillna(50.0)
+
+    out["sma_trend"] = close.rolling(50).mean()
+
+    prev_close = close.shift(1)
+    tr_components = pd.concat(
+        [
+            (high - low).abs(),
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    )
+    true_range = tr_components.max(axis=1)
+    out["atr"] = true_range.rolling(14).mean()
+    out["atr_pct"] = np.where(close > 0, (out["atr"] / close) * 100.0, 0.0)
+
+    out["breakout_high"] = close.shift(1).rolling(20).max()
+    out["breakout_low"] = close.shift(1).rolling(20).min()
+
+    # ------------------------------------------------------------
+    # Erweiterte interne Spalten
+    # ------------------------------------------------------------
+    out["sma20"] = close.rolling(20).mean()
+    out["sma50"] = close.rolling(50).mean()
+    out["sma200"] = close.rolling(200).mean()
+    out["volume_sma20"] = volume.rolling(20).mean()
+
+    out["momentum_20"] = close.pct_change(20)
+    out["momentum_60"] = close.pct_change(60)
+
+    out["return_1d"] = close.pct_change()
+    out["volatility_20"] = out["return_1d"].rolling(20).std() * 100.0
+
+    out["breakout_20"] = _rolling_breakout(close, 20)
+
+    # ------------------------------------------------------------
+    # Logik-Spalten, die auch der Test erwartet
+    # ------------------------------------------------------------
+    out["trend_ok"] = (close > out["sma50"]) & (out["ema_fast"] >= out["ema_slow"])
+    out["volatility_ok"] = out["atr_pct"] <= 6.0
+    out["momentum_ok"] = (out["momentum_20"] > 0.01) | (out["rsi"] > 52)
+    out["breakout_ok"] = close > out["breakout_high"]
+
+    volume_ok = volume >= (out["volume_sma20"] * 0.8)
+
+    # Buy-freundlicher, aber weiterhin nachvollziehbar
+    out["buy_signal"] = (
+        out["trend_ok"]
+        & out["momentum_ok"]
+        & out["volatility_ok"]
+        & (out["breakout_ok"] | volume_ok)
     )
 
-    fundamental_score = _calc_fundamental_score(fundamentals or {})
-
-    score_components = {
-        "momentum_component": momentum * 0.35,
-        "volatility_component": volatility * 12,
-        "trend_bonus": 10 if bool(last["trend_ok"]) else 0,
-        "breakout_bonus": 8 if bool(last["breakout_ok"]) else 0,
-        "momentum_bonus": 5 if bool(last["momentum_ok"]) else 0,
-        "relative_strength_bonus": 8 if relative_strength_ok else 0,
-        "fundamental_bonus": fundamental_score * 2.5,
-    }
-
-    score = sum(score_components.values())
-
-    reasons = _build_reason_list(last, relative_strength_pct, fundamental_score)
-    risk = _risk_level(float(last["atr_pct"]), float(last["rsi"]))
-    strength = _strength_label(score)
-    future_signal = _future_recommendation(
-        score=score,
-        current_signal=current_signal,
-        trend_ok=bool(last["trend_ok"]),
-        volatility_ok=bool(last["volatility_ok"]),
-        relative_strength_ok=relative_strength_ok,
+    out["sell_signal"] = (
+        (close < out["sma50"])
+        | (out["ema_fast"] < out["ema_slow"])
+        | (out["momentum_20"] < -0.03)
+        | (out["rsi"] < 45)
     )
 
-    is_candidate = bool(last["trend_ok"]) and bool(last["volatility_ok"])
+    return out
+
+
+def normalize_signal_from_row(row: pd.Series) -> str:
+    if bool(row.get("buy_signal", False)):
+        return "BUY"
+    if bool(row.get("sell_signal", False)):
+        return "SELL"
+
+    close = float(row.get("Close", 0.0))
+    sma50 = float(row.get("sma50", row.get("sma_trend", 0.0)))
+    sma20 = float(row.get("sma20", 0.0))
+    momentum_20 = float(row.get("momentum_20", 0.0))
+
+    if close > sma50 and sma20 >= sma50 and momentum_20 >= 0:
+        return "WATCH"
+
+    return "HOLD"
+
+
+def analyze_symbol(
+    df: pd.DataFrame,
+    symbol: str,
+    benchmark_df: Optional[pd.DataFrame] = None,
+    fundamentals: Optional[Dict] = None,
+) -> Optional[Dict]:
+    if df is None or df.empty:
+        return None
+
+    work = add_signals(df).dropna(subset=["Close"])
+    if work.empty:
+        return None
+
+    close = _safe_series(work, "Close")
+    volume = _safe_series(work, "Volume")
+
+    latest = work.iloc[-1]
+
+    latest_close = float(latest["Close"])
+    sma20 = float(latest.get("sma20", np.nan))
+    sma50 = float(latest.get("sma50", np.nan))
+    sma200 = float(latest.get("sma200", np.nan))
+    momentum_20 = float(latest.get("momentum_20", 0.0))
+    momentum_60 = float(latest.get("momentum_60", 0.0))
+    volatility_pct = float(latest.get("volatility_20", 0.0))
+
+    benchmark_close = None
+    if benchmark_df is not None and not benchmark_df.empty and "Close" in benchmark_df.columns:
+        benchmark_close = pd.to_numeric(benchmark_df["Close"], errors="coerce")
+
+    rs_pct = _relative_strength_pct(close, benchmark_close)
+    f_score = _fundamental_score(fundamentals)
+
+    trend_ok = bool(latest.get("trend_ok", False))
+    long_trend_ok = bool(not math.isnan(sma200) and latest_close >= sma200)
+    breakout_ok = bool(latest.get("breakout_ok", False))
+    momentum_ok = bool(latest.get("momentum_ok", False) or momentum_60 > 0.03)
+    volatility_ok = bool(latest.get("volatility_ok", False))
+    relative_strength_ok = bool(rs_pct >= -2.0)
+
+    reasons: List[str] = []
+
+    if trend_ok:
+        reasons.append("über SMA50")
+    if long_trend_ok:
+        reasons.append("über SMA200")
+    if breakout_ok:
+        reasons.append("Breakout")
+    if momentum_ok:
+        reasons.append("Momentum positiv")
+    if relative_strength_ok and rs_pct > 0:
+        reasons.append("stärker als Markt")
+    if f_score >= 2:
+        reasons.append("Fundamentaldaten ok")
+
+    score = 0.0
+    if trend_ok:
+        score += 22
+    if long_trend_ok:
+        score += 14
+    if breakout_ok:
+        score += 18
+    if momentum_ok:
+        score += 16
+    if volatility_ok:
+        score += 8
+    if relative_strength_ok:
+        score += 12
+    score += min(f_score * 3.0, 15.0)
+
+    score += max(min(rs_pct * 0.6, 8.0), -8.0)
+    score += max(min(momentum_20 * 100.0 * 0.3, 6.0), -6.0)
+
+    score = float(max(0.0, min(score, 100.0)))
+
+    current_signal = normalize_signal_from_row(latest)
+
+    if trend_ok and momentum_ok and relative_strength_ok and score >= 50:
+        future_signal = "BUY"
+    elif trend_ok and score >= 40:
+        future_signal = "WATCH"
+    elif latest_close < sma50 or momentum_20 < -0.03:
+        future_signal = "SELL"
+    else:
+        future_signal = "HOLD"
+
+    is_candidate = future_signal in ("BUY", "WATCH")
 
     return {
         "symbol": symbol,
-        "momentum": momentum,
-        "volatility": volatility,
-        "avg_volume": avg_volume,
+        "avg_volume": float(volume.tail(20).mean()) if not volume.empty else 0.0,
+        "trend_ok": trend_ok,
+        "long_trend_ok": long_trend_ok,
+        "breakout_ok": breakout_ok,
+        "momentum_ok": momentum_ok,
+        "volatility_ok": volatility_ok,
+        "relative_strength_ok": relative_strength_ok,
+        "relative_strength_pct": rs_pct,
+        "fundamental_score": f_score,
         "score": score,
-        "score_components": score_components,
-        "is_candidate": is_candidate,
         "current_signal": current_signal,
         "future_signal": future_signal,
-        "strength": strength,
-        "risk": risk,
+        "strength": _strength_label(score),
+        "risk": _risk_label(volatility_pct, rs_pct),
         "reasons": reasons,
-        "trend_ok": bool(last["trend_ok"]),
-        "breakout_ok": bool(last["breakout_ok"]),
-        "momentum_ok": bool(last["momentum_ok"]),
-        "volatility_ok": bool(last["volatility_ok"]),
-        "relative_strength_pct": relative_strength_pct,
-        "relative_strength_ok": relative_strength_ok,
-        "fundamental_score": fundamental_score,
+        "is_candidate": is_candidate,
+        "volatility_pct": volatility_pct,
     }

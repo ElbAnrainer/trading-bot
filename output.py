@@ -1,4 +1,11 @@
 from config import BASE_CURRENCY
+import shutil
+
+
+try:
+    LINE_WIDTH = min(120, shutil.get_terminal_size().columns)
+except Exception:
+    LINE_WIDTH = 80
 
 
 GREEN = "\033[92m"
@@ -24,28 +31,32 @@ def set_beginner_mode(enabled):
 
 def _style(text, *styles):
     if not PRO_MODE or not styles:
-        return text
+        return str(text)
     return "".join(styles) + str(text) + RESET
 
 
-def colorize(value, text):
-    if value > 0:
-        return _style(text, GREEN)
-    if value < 0:
-        return _style(text, RED)
-    return text
+def _line(char="="):
+    return char * LINE_WIDTH
 
 
-def colorize_signal(signal):
-    if signal == "BUY":
-        return _style(signal, GREEN, BOLD)
-    if signal == "SELL":
-        return _style(signal, RED, BOLD)
-    if signal == "WATCH":
-        return _style(signal, YELLOW, BOLD)
-    if signal == "HOLD":
-        return _style(signal, CYAN) if PRO_MODE else signal
-    return signal
+def _subline(char="-"):
+    return char * LINE_WIDTH
+
+
+def _format_row(text):
+    text = str(text)
+    if len(text) > LINE_WIDTH:
+        return text[:LINE_WIDTH]
+    return text.ljust(LINE_WIDTH)
+
+
+def _print_block(title, lines, line_char="="):
+    print("\n" + (line_char * LINE_WIDTH))
+    print(_format_row(title))
+    print(line_char * LINE_WIDTH)
+    for line in lines:
+        print(_format_row(line))
+    print(line_char * LINE_WIDTH + "\n")
 
 
 def _headline(text):
@@ -58,68 +69,83 @@ def _warning_line(text):
     return text
 
 
+def colorize(value, text):
+    if value > 0:
+        return _style(text, GREEN)
+    if value < 0:
+        return _style(text, RED)
+    return str(text)
+
+
+def colorize_signal(signal):
+    if signal == "BUY":
+        return _style(signal, GREEN, BOLD) if PRO_MODE else signal
+    if signal == "SELL":
+        return _style(signal, RED, BOLD) if PRO_MODE else signal
+    if signal == "WATCH":
+        return _style(signal, YELLOW, BOLD) if PRO_MODE else signal
+    if signal == "HOLD":
+        return _style(signal, CYAN) if PRO_MODE else signal
+    return str(signal)
+
+
 def print_simulation_notice():
-    print("\n==============================")
-    print(_headline("SIMULATIONSHINWEIS"))
-    print("------------------------------")
-    print("Dieses System arbeitet nur mit Simulationsdaten.")
-    print("Es werden keine echten Orders ausgeführt.")
-    print("Es besteht keine Broker-Anbindung.")
-    print(_warning_line("Keine Anlageberatung."))
-    print("==============================\n")
+    lines = [
+        "Dieses System arbeitet nur mit Simulationsdaten.",
+        "Es werden keine echten Orders ausgeführt.",
+        "Es besteht keine Broker-Anbindung.",
+        "Keine Anlageberatung.",
+    ]
+    _print_block(_headline("SIMULATIONSHINWEIS"), lines)
 
 
 def print_summary_only(closed_trades, native_currency):
-    total_pnl_eur = sum(t.get("pnl_eur", 0.0) for t in closed_trades)
-
-    wins = sum(1 for t in closed_trades if t.get("pnl_eur", 0.0) > 0)
-    losses = sum(1 for t in closed_trades if t.get("pnl_eur", 0.0) < 0)
     total = len(closed_trades)
+    wins = sum(1 for t in closed_trades if float(t.get("pnl_eur", 0.0)) > 0)
+    losses = sum(1 for t in closed_trades if float(t.get("pnl_eur", 0.0)) < 0)
+    total_pnl = sum(float(t.get("pnl_eur", 0.0)) for t in closed_trades)
+    avg_trade = (total_pnl / total) if total else 0.0
+    hit = (wins / total * 100.0) if total else 0.0
 
-    avg_trade = (total_pnl_eur / total) if total else 0.0
-    hit = (wins / total * 100) if total else 0.0
-    pnl_str = colorize(total_pnl_eur, f"{total_pnl_eur:.2f} EUR")
-    avg_str = colorize(avg_trade, f"{avg_trade:.2f} EUR")
+    lines = [
+        f"Abgeschlossene Trades : {total}",
+        f"Gewinntrades          : {wins}",
+        f"Verlusttrades         : {losses}",
+        f"Trefferquote          : {hit:.2f} %",
+        f"Ø Trade P/L           : {colorize(avg_trade, f'{avg_trade:.2f} EUR')}",
+        f"Gesamt P/L            : {colorize(total_pnl, f'{total_pnl:.2f} EUR')}",
+    ]
 
-    print("==============================")
-    print(_headline("SIMULATIONSERGEBNIS (EUR)"))
-    print("------------------------------")
-    print(f"Abgeschlossene Trades : {total}")
-    print(f"Gewinntrades          : {wins}")
-    print(f"Verlusttrades         : {losses}")
-    print(f"Trefferquote          : {hit:.2f} %")
-    print(f"Ø Trade P/L           : {avg_str}")
-    print(f"Gesamt P/L            : {pnl_str}")
     if PRO_MODE and hit < 45 and total >= 5:
-        print(_warning_line("Trefferquote ist schwach."))
-    print("==============================\n")
+        lines.append(_warning_line("Trefferquote ist schwach."))
+
+    _print_block(_headline("SIMULATIONSERGEBNIS (EUR)"), lines)
 
 
 def print_ranking(results):
-    print("\n====================================================")
-    print(_headline("RANKING DER BESTEN BACKTESTS (EUR)"))
-    print("====================================================")
-
     if not results:
-        print("Keine Backtest-Ergebnisse vorhanden.")
-        print("====================================================\n")
+        _print_block(_headline("PERFORMANCE-RANKING"), ["Keine Backtest-Ergebnisse vorhanden."])
         return
 
+    lines = []
     for i, r in enumerate(results, 1):
-        pnl = r["pnl_eur"]
-        pnl_str = colorize(pnl, f"{pnl:.2f} EUR")
-        company = r.get("company_name", r["symbol"])
-        signal = r.get("signal")
+        pnl = float(r.get("pnl_eur", 0.0))
+        pnl_pct = float(r.get("pnl_pct_eur", 0.0))
+        hit_rate = float(r.get("hit_rate_pct", 0.0))
+        trades = int(r.get("trade_count", 0))
+        symbol = r.get("symbol", "-")
+        company = r.get("company_name", symbol)
+        signal = r.get("signal", "")
         signal_text = f" | {colorize_signal(signal)}" if signal else ""
 
         prefix = "★ " if PRO_MODE and i == 1 else ""
-        print(
-            f"{prefix}{i}. {r['symbol']} ({company}) | "
-            f"{pnl_str} ({r['pnl_pct_eur']:.2f}%) | "
-            f"Trades: {r['trade_count']}{signal_text}"
+        lines.append(
+            f"{prefix}{i:>2}. {symbol:<6} {company[:28]:<28} | "
+            f"P/L: {colorize(pnl, f'{pnl:.2f} EUR'):>12} | "
+            f"{pnl_pct:>7.2f}% | Treffer: {hit_rate:>6.2f}% | Trades: {trades:>3}{signal_text}"
         )
 
-    print("====================================================\n")
+    _print_block(_headline("PERFORMANCE-RANKING DER BESTEN BACKTESTS"), lines)
 
 
 def print_recommendation(symbol, signal, price_eur, price_native, native_currency):
@@ -129,186 +155,186 @@ def print_recommendation(symbol, signal, price_eur, price_native, native_currenc
         line = f"{symbol}: {signal_str} @ {price_eur:.2f} EUR"
     else:
         line = (
-            f"{symbol}: {signal_str} @ "
-            f"{price_eur:.2f} EUR "
+            f"{symbol}: {signal_str} @ {price_eur:.2f} EUR "
             f"(Handel: {price_native:.2f} {native_currency})"
         )
 
     if PRO_MODE and signal == "SELL":
         line = _warning_line(line)
 
-    print(line)
+    print(_format_row(line))
 
 
 def print_portfolio(portfolio):
-    print("\n==============================")
-    print(_headline("SIMULIERTES DEPOT"))
-    print("------------------------------")
+    if not portfolio:
+        _print_block(_headline("SIMULIERTES DEPOT"), ["Keine Positionen im simulierten Depot."])
+        return
 
     total = 0.0
-
-    if not portfolio:
-        print("Keine Positionen im simulierten Depot.")
+    lines = []
 
     for symbol, pos in portfolio.items():
-        value = pos["qty"] * pos["price_eur"]
+        qty = float(pos["qty"])
+        price_eur = float(pos["price_eur"])
+        value = qty * price_eur
         total += value
-        value_str = colorize(value, f"{value:.2f} EUR")
         company = pos.get("company_name", symbol)
 
         if pos["native_currency"] == BASE_CURRENCY:
-            print(f"{symbol} ({company}): {pos['qty']} Stück | Wert {value_str}")
+            lines.append(
+                f"{symbol:<6} {company[:28]:<28} | Qty: {int(qty):>4} | Wert: {colorize(value, f'{value:.2f} EUR')}"
+            )
         else:
-            native_value = pos["qty"] * pos["price_native"]
-            print(
-                f"{symbol} ({company}): {pos['qty']} Stück | "
-                f"Wert {value_str} | "
-                f"{native_value:.2f} {pos['native_currency']}"
+            native_value = qty * float(pos["price_native"])
+            lines.append(
+                f"{symbol:<6} {company[:22]:<22} | Qty: {int(qty):>4} | "
+                f"Wert: {colorize(value, f'{value:.2f} EUR')} | {native_value:.2f} {pos['native_currency']}"
             )
 
-    print("------------------------------")
-    print(f"Depotwert: {colorize(total, f'{total:.2f} EUR')}")
-    print("==============================\n")
+    lines.append(_subline("-"))
+    lines.append(f"Depotwert: {colorize(total, f'{total:.2f} EUR')}")
+
+    _print_block(_headline("SIMULIERTES DEPOT"), lines)
 
 
 def print_future_candidates(candidates):
-    print("\n====================================================")
-    print(_headline("TOP-KANDIDATEN FÜR DIE BEOBACHTUNG"))
-    print("====================================================")
-
     if not candidates:
-        print("Keine Kandidaten gefunden.")
-        print("====================================================\n")
+        _print_block(_headline("TOP-KANDIDATEN FÜR DIE BEOBACHTUNG"), ["Keine Kandidaten gefunden."])
         return
 
+    lines = []
     for i, c in enumerate(candidates, 1):
-        reasons = ", ".join(c.get("reasons", [])) if c.get("reasons") else "keine klare Begründung"
         company = c.get("company_name", c["symbol"])
+        reasons = ", ".join(c.get("reasons", [])) if c.get("reasons") else "keine klare Begründung"
 
-        print(
-            f"{i}. {c['symbol']} ({company}) | "
-            f"{colorize_signal(c['future_signal'])} | "
-            f"Score: {c['score']:.2f} | "
-            f"Stärke: {c['strength']} | "
-            f"Risiko: {c['risk']}"
+        lines.append(
+            f"{i:>2}. {c['symbol']:<6} {company[:25]:<25} | "
+            f"{colorize_signal(c['future_signal']):<6} | "
+            f"Score: {c['score']:>6.2f} | Stärke: {c['strength']:<6} | Risiko: {c['risk']:<6}"
         )
-        print(f"   Grund: {reasons}")
+        lines.append(f"    Grund: {reasons}")
 
         if PRO_MODE and c.get("future_signal") == "BUY" and c.get("risk") == "hoch":
-            print(f"   {_warning_line('Kaufsignal bei hohem Risiko.')}")
+            lines.append(f"    {_warning_line('Kaufsignal bei hohem Risiko.')}")
 
-    print("====================================================\n")
+    _print_block(_headline("TOP-KANDIDATEN FÜR DIE BEOBACHTUNG"), lines)
 
 
 def print_future_candidates_compact(candidates):
-    print("\n====================================================")
-    print(_headline("TOP-KANDIDATEN FÜR DIE BEOBACHTUNG"))
-    print("====================================================")
-
     if not candidates:
-        print("Keine Kandidaten gefunden.")
-        print("====================================================\n")
+        _print_block(_headline("TOP-KANDIDATEN FÜR DIE BEOBACHTUNG"), ["Keine Kandidaten gefunden."])
         return
 
+    lines = []
     for i, c in enumerate(candidates, 1):
         company = c.get("company_name", c["symbol"])
-        print(
-            f"{i}. {c['symbol']} ({company}) | "
-            f"{colorize_signal(c['future_signal'])} | "
-            f"Score: {c['score']:.2f} | "
-            f"Stärke: {c['strength']} | "
-            f"Risiko: {c['risk']}"
+        lines.append(
+            f"{i:>2}. {c['symbol']:<6} {company[:25]:<25} | "
+            f"{c['future_signal']:<5} | Score: {c['score']:>6.2f} | "
+            f"Stärke: {c['strength']:<6} | Risiko: {c['risk']:<6}"
         )
 
-    print("====================================================\n")
+    _print_block(_headline("TOP-KANDIDATEN FÜR DIE BEOBACHTUNG"), lines)
 
 
 def print_financial_overview(start, end, pnl, currency, pnl_native):
-    print("\n==============================")
-    print(_headline("FINANZÜBERSICHT DER SIMULATION"))
-    print("------------------------------")
-    print(f"Start     : {start:.2f} EUR")
-    print(f"Stand     : {end:.2f} EUR")
-    print(f"Differenz : {colorize(pnl, f'{pnl:.2f} EUR')}")
+    lines = [
+        f"Start     : {start:.2f} EUR",
+        f"Stand     : {end:.2f} EUR",
+        f"Differenz : {colorize(pnl, f'{pnl:.2f} EUR')}",
+    ]
+
     if currency != BASE_CURRENCY:
-        print(f"Info      : {pnl_native:.2f} {currency}")
+        lines.append(f"Info      : {pnl_native:.2f} {currency}")
+
     if PRO_MODE and pnl < 0:
-        print(_warning_line("Simulation aktuell im Minus."))
-    print("==============================\n")
+        lines.append(_warning_line("Simulation aktuell im Minus."))
+
+    _print_block(_headline("FINANZÜBERSICHT DER SIMULATION"), lines)
 
 
 def print_equity_curve_terminal(symbol, curve):
     if not curve:
         return
 
-    values = [p["equity_eur"] for p in curve]
-
+    values = [float(p["equity_eur"]) for p in curve]
     blocks = "▁▂▃▄▅▆▇█"
+
     min_v = min(values)
     max_v = max(values)
 
     if max_v == min_v:
-        line = "─" * len(values)
+        spark = "─" * min(len(values), max(10, LINE_WIDTH - 10))
     else:
-        line = ""
-        for v in values:
+        usable = values[: max(10, LINE_WIDTH - 10)]
+        chars = []
+        for v in usable:
             idx = int((v - min_v) / (max_v - min_v) * (len(blocks) - 1))
-            line += blocks[idx]
+            chars.append(blocks[idx])
+        spark = "".join(chars)
 
-    print("\n==============================")
-    print(_headline(f"DEPOTWERT-KURVE {symbol}"))
-    print("------------------------------")
-    print(line)
-    print(f"Start: {values[0]:.2f}")
-    print(f"Ende: {values[-1]:.2f}")
+    lines = [
+        spark,
+        f"Start: {values[0]:.2f}",
+        f"Ende: {values[-1]:.2f}",
+    ]
+
     if PRO_MODE:
         delta = values[-1] - values[0]
-        print(f"Delta: {colorize(delta, f'{delta:.2f} EUR')}")
-    print("==============================\n")
+        lines.append(f"Delta: {colorize(delta, f'{delta:.2f} EUR')}")
+
+    _print_block(_headline(f"DEPOTWERT-KURVE {symbol}"), lines)
 
 
 def print_closed_trades(symbol, name, isin, wkn, trades, currency):
     if not trades:
         return
 
-    print(f"\nDETAILS {symbol}")
-    print("------------------------------")
-    print(f"{name}")
-    print(f"ISIN: {isin} | WKN: {wkn} | Währung: {currency}")
-    print("------------------------------")
+    lines = [
+        f"{name}",
+        f"ISIN: {isin} | WKN: {wkn} | Währung: {currency}",
+        _subline("-"),
+    ]
 
     for t in trades:
-        pnl_eur = t.get("pnl_eur", 0.0)
+        pnl_eur = float(t.get("pnl_eur", 0.0))
         pnl_str = colorize(pnl_eur, f"{pnl_eur:.2f} EUR")
+        buy_time = t.get("buy_time", "-")
+        sell_time = t.get("sell_time", "-")
         reason = t.get("reason")
+
         if reason:
-            print(f"{t['buy_time']} -> {t['sell_time']} | {pnl_str} | Grund: {reason}")
+            lines.append(f"{buy_time} -> {sell_time} | {pnl_str} | Grund: {reason}")
         else:
-            print(f"{t['buy_time']} -> {t['sell_time']} | {pnl_str}")
+            lines.append(f"{buy_time} -> {sell_time} | {pnl_str}")
+
+    _print_block(_headline(f"DETAILS {symbol}"), lines)
 
 
 def print_diagnostics(info):
-    print("\n------------------------------")
-    print(_headline(f"DIAGNOSE {info['symbol']}"))
-    print("------------------------------")
-
     def yn(v):
         return "JA" if v else "NEIN"
 
-    print(f"Trend                : {yn(info.get('trend_ok'))}")
-    print(f"Breakout             : {yn(info.get('breakout_ok'))}")
-    print(f"Momentum             : {yn(info.get('momentum_ok'))}")
-    print(f"Volatilität          : {yn(info.get('volatility_ok'))}")
-    print(f"Relative Stärke      : {yn(info.get('relative_strength_ok'))}")
+    lines = [
+        f"Trend                : {yn(info.get('trend_ok'))}",
+        f"Breakout             : {yn(info.get('breakout_ok'))}",
+        f"Momentum             : {yn(info.get('momentum_ok'))}",
+        f"Volatilität          : {yn(info.get('volatility_ok'))}",
+        f"Relative Stärke      : {yn(info.get('relative_strength_ok'))}",
+    ]
 
     rs = info.get("relative_strength_pct")
     if rs is not None:
-        print(f"RS vs Markt          : {rs:.2f}%")
+        lines.append(f"RS vs Markt          : {rs:.2f}%")
 
-    print(f"Fundamental Score    : {info.get('fundamental_score')}")
-    print(f"Score                : {info.get('score'):.2f}")
-    print(f"Aktuell              : {info.get('current_signal')}")
-    print(f"Zukunft              : {info.get('future_signal')}")
+    lines.extend(
+        [
+            f"Fundamental Score    : {info.get('fundamental_score')}",
+            f"Score                : {info.get('score'):.2f}",
+            f"Aktuell              : {info.get('current_signal')}",
+            f"Zukunft              : {info.get('future_signal')}",
+        ]
+    )
 
     if PRO_MODE:
         blockers = []
@@ -319,96 +345,70 @@ def print_diagnostics(info):
         if not info.get("momentum_ok"):
             blockers.append("Momentum")
         if blockers:
-            print(_warning_line(f"Blocker: {', '.join(blockers)}"))
+            lines.append(_warning_line(f"Blocker: {', '.join(blockers)}"))
 
-    print("------------------------------\n")
+    _print_block(_headline(f"DIAGNOSE {info['symbol']}"), lines, line_char="-")
 
 
 def print_buy_overview(candidates):
-    print("\n====================================================")
-    print(_headline("BEOBACHTUNGSSIGNALE"))
-    print("====================================================")
-
     filtered = [c for c in candidates if c["future_signal"] in ("BUY", "WATCH")]
 
     if not filtered:
-        print("Keine BUY/WATCH Kandidaten gefunden.")
-        print("====================================================\n")
+        _print_block(_headline("BEOBACHTUNGSSIGNALE"), ["Keine BUY/WATCH Kandidaten gefunden."])
         return
 
+    lines = []
     for i, c in enumerate(filtered, 1):
         company = c.get("company_name", c["symbol"])
         prefix = "► " if PRO_MODE and c["future_signal"] == "BUY" else ""
-        print(
-            f"{prefix}{i}. {c['symbol']} ({company}) | "
+        lines.append(
+            f"{prefix}{i:>2}. {c['symbol']:<6} {company[:25]:<25} | "
             f"{colorize_signal(c['future_signal'])} | "
-            f"Score: {c['score']:.2f} | "
-            f"Stärke: {c['strength']} | "
-            f"Risiko: {c['risk']}"
+            f"Score: {c['score']:.2f} | Stärke: {c['strength']} | Risiko: {c['risk']}"
         )
 
-    print("====================================================\n")
+    _print_block(_headline("BEOBACHTUNGSSIGNALE"), lines)
 
 
 def print_buy_blockers_summary(blockers):
-    print("\n====================================================")
-    print(_headline("WARUM GIBT ES KAUM BUY-SIGNALE?"))
-    print("====================================================")
-
     if not blockers:
-        print("Keine Blocker erkannt.")
-        print("====================================================\n")
+        _print_block(_headline("WARUM GIBT ES KAUM BUY-SIGNALE?"), ["Keine Blocker erkannt."])
         return
 
+    lines = []
     sorted_items = sorted(blockers.items(), key=lambda x: x[1], reverse=True)
 
     for i, (name, count) in enumerate(sorted_items, 1):
         if count <= 0:
             continue
-        print(f"{i}. {name:<24}: {count} Aktien")
+        lines.append(f"{i}. {name:<24}: {count} Aktien")
 
-    print("====================================================\n")
+    if not lines:
+        lines.append("Keine relevanten Blocker erkannt.")
+
+    _print_block(_headline("WARUM GIBT ES KAUM BUY-SIGNALE?"), lines)
 
 
 def print_runtime(seconds):
-    print("\n==============================")
-    print(_headline("LAUFZEIT"))
-    print("------------------------------")
-    print(f"{seconds:.2f} Sekunden")
+    lines = [f"{seconds:.2f} Sekunden"]
+
     if PRO_MODE and seconds > 120:
-        print(_warning_line("Laufzeit ist relativ hoch."))
-    print("==============================\n")
+        lines.append(_warning_line("Laufzeit ist relativ hoch."))
+
+    _print_block(_headline("LAUFZEIT"), lines)
 
 
 def print_explanations():
     if not BEGINNER_MODE:
         return
 
-    print("\n==============================")
-    print("EINSTEIGER-HILFE")
-    print("------------------------------")
-    print("P/L")
-    print("  Bedeutet Profit/Loss, also Gewinn oder Verlust.")
-    print("  Positiv = Gewinn, negativ = Verlust.\n")
+    lines = [
+        "P/L = Gewinn oder Verlust",
+        "Trades = Anzahl abgeschlossener Simulations-Trades",
+        "Trefferquote = Anteil der Gewinntrades in Prozent",
+        "Score = interne Bewertungszahl des Systems",
+        "BUY = attraktiv | WATCH = beobachten | SELL = eher schwach | HOLD = neutral",
+        "Wichtig: Das alles ist nur Simulation und keine Anlageberatung.",
+    ]
 
-    print("Trades")
-    print("  Anzahl abgeschlossener Simulations-Trades.")
-    print("  Ein Trade ist typischerweise ein kompletter Kauf-Verkauf-Zyklus.\n")
-
-    print("Trefferquote")
-    print("  Anteil der Gewinntrades in Prozent.")
-    print("  Beispiel: 60 % heißt, 6 von 10 Trades waren profitabel.\n")
-
-    print("Score")
-    print("  Interne Bewertungszahl des Systems.")
-    print("  Höher bedeutet: Aktie sieht nach den Regeln des Modells interessanter aus.\n")
-
-    print("BUY / WATCH / SELL / HOLD")
-    print("  BUY   = im Modell attraktiv")
-    print("  WATCH = beobachten")
-    print("  SELL  = im Modell eher schwach / Ausstiegssignal")
-    print("  HOLD  = halten / keine klare Änderung\n")
-
-    print("Wichtig")
-    print("  Das alles ist nur Simulation und keine Anlageberatung.")
-    print("==============================\n")
+    _print_block("EINSTEIGER-HILFE", lines)

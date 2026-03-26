@@ -1,0 +1,12 @@
+diff --git a/output.py b/output.py
+--- a/output.py
++++ b/output.py
+@@ -189,7 +189,7 @@ def print_equity_curve_terminal(symbol, curve):
+     lines = [
+         spark,
+         f"Start: {values[0]:.2f}",
+-        f"Ende : {values[-1]:.2f}",
++        f"Ende: {values[-1]:.2f}",
+     ]
+ 
+     if PRO_MODE:
