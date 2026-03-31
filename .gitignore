@@ -95,3 +95,15 @@ backup_refactor_*/
 *.sqlite3
 refactor_artifacts_bundle.zip
 *.pyc
+
+# Cache / Daten
+.cache/
+
+# ML / Modelle
+*.pkl
+*.model
+*.json
+
+# Optional spezifisch:
+.cache/market_data/
+.cache/learned_score_model.json
