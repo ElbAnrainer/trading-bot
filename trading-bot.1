@@ -1,0 +1,156 @@
+---
+
+## `/Users/thorsten/development/trading-bot/trading-bot.1`
+
+```roff
+.TH TRADING-BOT 1 "2026-03-27" "trading-bot" "User Commands"
+.SH NAME
+trading-bot \- Simulations- und Analyse-System für Aktien ohne Broker-Anbindung
+.SH SYNOPSIS
+.B python main.py
+.RI [ options ]
+.br
+.B ./run.sh
+.SH DESCRIPTION
+trading-bot ist ein reines Simulationssystem für Aktienanalyse, Backtesting,
+selbstlernende Bewertung, Portfolio-Gewichtung, Risk-Management,
+Walk-Forward-Analyse, Live-Dashboard und ein Mini-Trading-System mit Persistenz.
+
+Es werden keine echten Orders ausgeführt.
+Es gibt keine Broker-Anbindung.
+.SH OPTIONS
+.TP
+.BR \-p ", " \-\-period " " PERIOD
+Analysezeitraum, zum Beispiel 1mo, 3mo, 6mo, 1y.
+.TP
+.BR \-t ", " \-\-top " " N
+Anzahl der Top-Kandidaten.
+.TP
+.BR \-mv ", " \-\-min-volume " " N
+Minimales durchschnittliches Handelsvolumen.
+.TP
+.B \-l
+Pro-/Live-Modus.
+.TP
+.B \-\-live
+Zeigt die Live-Tabelle mit selbstlernendem Score.
+.TP
+.B \-\-long
+Erweiterte Detailausgabe.
+.TP
+.B \-\-beginner
+Aktiviert zusätzliche Erklärungen.
+.TP
+.B \-\-dashboard
+Startet das Live-Dashboard im Terminal.
+.TP
+.B \-\-mini-system
+Startet das persistente Mini-Trading-System.
+.TP
+.B \-\-mail
+Verschickt den Report per Mail.
+.TP
+.B \-\-no-pdf
+Deaktiviert die PDF-Erzeugung.
+.TP
+.B \-\-skip-realistic-backtest
+Überspringt die realistische 10.000-EUR-Schätzung.
+.SH MODES
+.TP
+.B Standard
+Normale Analyse mit Ranking, Trading-Plan, Walk-Forward, realistischer 10.000-EUR-Schätzung und Reports.
+.TP
+.B Live
+Laufend aktualisierte Tabelle mit Top-Scores.
+.TP
+.B Dashboard
+Terminal-Dashboard mit KPI, Portfolio-Plan, offenen Positionen und Events.
+.TP
+.B Mini-System
+Mini-Trading-System mit Portfolio-Persistenz, Stop-Loss, Trailing Stop und Drawdown-Control.
+.SH REALISTIC BACKTEST
+Im normalen Lauf wird zusätzlich ein realistischer Backtest mit 10.000 EUR Startkapital erzeugt.
+
+Dabei werden unter anderem berücksichtigt:
+.IP \(bu 2
+endliches Startkapital
+.IP \(bu 2
+Kapitalbindung in offenen Positionen
+.IP \(bu 2
+begrenzte gleichzeitige Positionen
+.IP \(bu 2
+Gebühren
+.IP \(bu 2
+Slippage
+.IP \(bu 2
+Stop-Loss
+.IP \(bu 2
+Trailing Stop
+.IP \(bu 2
+Reinvestition
+
+Diese Schätzung ist die relevante Antwort auf die Frage,
+was man mit 10.000 EUR ungefähr hätte machen können.
+.SH FILES
+.TP
+.I reports/learned_scores.json
+Persistente Scores des selbstlernenden Systems.
+.TP
+.I reports/portfolio_state.json
+Persistenter Depotzustand des Mini-Trading-Systems.
+.TP
+.I reports/realistic_backtest_latest.json
+Letzte realistische 10.000-EUR-Backtest-Zusammenfassung.
+.TP
+.I reports/dashboard_latest.json
+Letzte Dashboard-Daten.
+.TP
+.I reports/dashboard_latest.html
+Letzte Dashboard-HTML-Ansicht.
+.TP
+.I reports/trading_report_latest.pdf
+Aktueller PDF-Trading-Report.
+.TP
+.I reports/daily_report_latest.html
+Aktueller HTML-Daily-Report.
+.SH RUN.SH
+Das Menüskript
+.B run.sh
+stellt die wichtigsten Modi interaktiv bereit.
+
+Die Taste
+.B q
+soll dort das Skript jederzeit abbrechen:
+.IP \(bu 2
+im Hauptmenü
+.IP \(bu 2
+in Untermenüs
+.IP \(bu 2
+bei Eingabeaufforderungen
+.IP \(bu 2
+während laufender Modi
+.SH EXAMPLES
+.TP
+.B python main.py
+Normale Analyse starten.
+.TP
+.B python main.py --live
+Live-Tabelle starten.
+.TP
+.B python main.py --dashboard
+Dashboard starten.
+.TP
+.B python main.py --mini-system
+Mini-Trading-System starten.
+.TP
+.B python main.py -p 6mo -t 10
+Analyse mit 6 Monaten Zeitraum und 10 Top-Kandidaten.
+.TP
+.B ./run.sh
+Interaktives Terminal-Menü starten.
+.SH SAFETY
+Dieses System dient ausschließlich der Analyse und Simulation.
+Es handelt sich nicht um Anlageberatung.
+Es werden keine echten Orders ausgelöst.
+.SH AUTHOR
+OpenAI / lokal angepasst für das Projekt.

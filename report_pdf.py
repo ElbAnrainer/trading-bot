@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import csv
+import json
 import os
 import shutil
 from datetime import datetime
 from statistics import mean, pstdev
+from typing import Any
 
 import matplotlib.pyplot as plt
 from reportlab.lib import colors
@@ -11,32 +15,39 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from config import get_active_profile_name, get_trading_config
 
-REPORT_PATH_CANDIDATES = [
-    "reports/trading_journal.csv",
-    "trading_journal.csv",
-]
 
 REPORTS_DIR = "reports"
+JOURNAL_CANDIDATES = [
+    os.path.join(REPORTS_DIR, "trading_journal.csv"),
+    "trading_journal.csv",
+]
+REALISTIC_BACKTEST_JSON = os.path.join(REPORTS_DIR, "realistic_backtest_latest.json")
+
+CHART_PATH = os.path.join(REPORTS_DIR, "equity_curve.png")
+REALISTIC_CHART_PATH = os.path.join(REPORTS_DIR, "equity_curve_realistic.png")
 LATEST_PDF_PATH = os.path.join(REPORTS_DIR, "trading_report_latest.pdf")
-CHART_EQUITY_PATH = os.path.join(REPORTS_DIR, "equity_curve.png")
-CHART_TOP_SYMBOLS_PATH = os.path.join(REPORTS_DIR, "top_symbols.png")
-MAX_VERSIONED_REPORTS = 100
 
 
-def _build_output_path():
+def _ensure_reports_dir() -> None:
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+
+
+def _build_output_path() -> str:
+    _ensure_reports_dir()
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     return os.path.join(REPORTS_DIR, f"trading_report_{timestamp}.pdf")
 
 
-def _find_report_path():
-    for path in REPORT_PATH_CANDIDATES:
+def _find_journal_path() -> str:
+    for path in JOURNAL_CANDIDATES:
         if os.path.exists(path):
             return path
-    return REPORT_PATH_CANDIDATES[0]
+    return JOURNAL_CANDIDATES[0]
 
 
-def _to_float(value, default=0.0):
+def _to_float(value: Any, default: float = 0.0) -> float:
     try:
         if value is None or value == "":
             return default
@@ -45,45 +56,12 @@ def _to_float(value, default=0.0):
         return default
 
 
-def _ensure_reports_dir():
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-
-
-def _copy_to_latest(versioned_pdf_path):
-    shutil.copyfile(versioned_pdf_path, LATEST_PDF_PATH)
-
-
-def _cleanup_old_reports(max_keep=MAX_VERSIONED_REPORTS):
-    if not os.path.isdir(REPORTS_DIR):
-        return
-
-    files = []
-    for name in os.listdir(REPORTS_DIR):
-        if not name.startswith("trading_report_") or not name.endswith(".pdf"):
-            continue
-        if name == "trading_report_latest.pdf":
-            continue
-        files.append(os.path.join(REPORTS_DIR, name))
-
-    files.sort(key=os.path.getmtime, reverse=True)
-
-    if len(files) <= max_keep:
-        return
-
-    for old_file in files[max_keep:]:
-        try:
-            os.remove(old_file)
-            print(f"Alte PDF gelöscht: {old_file}")
-        except OSError as exc:
-            print(f"Konnte alte PDF nicht löschen: {old_file} ({exc})")
-
-
-def load_trades():
-    report_path = _find_report_path()
+def load_trades() -> list[dict[str, Any]]:
+    report_path = _find_journal_path()
     if not os.path.exists(report_path):
         return []
 
-    trades = []
+    trades: list[dict[str, Any]] = []
     with open(report_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -108,95 +86,28 @@ def load_trades():
     return trades
 
 
-def build_equity_curve(trades, initial_capital=10_000.0):
-    equity = []
-    value = initial_capital
+def load_realistic_backtest() -> dict[str, Any] | None:
+    if not os.path.exists(REALISTIC_BACKTEST_JSON):
+        return None
 
-    for trade in trades:
-        value += trade["pnl_eur"]
-        equity.append(value)
-
-    return equity
-
-
-def calculate_max_drawdown_pct(equity_curve):
-    if not equity_curve:
-        return 0.0
-
-    peak = equity_curve[0]
-    max_drawdown = 0.0
-
-    for value in equity_curve:
-        if value > peak:
-            peak = value
-        if peak > 0:
-            drawdown = ((peak - value) / peak) * 100.0
-            if drawdown > max_drawdown:
-                max_drawdown = drawdown
-
-    return max_drawdown
+    try:
+        with open(REALISTIC_BACKTEST_JSON, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
-def summarize_top_symbols(trades, top_n=5):
-    by_symbol = {}
-
-    for trade in trades:
-        symbol = trade["symbol"] or "-"
-        if symbol not in by_symbol:
-            by_symbol[symbol] = {
-                "company": trade["company"] or symbol,
-                "trades": 0,
-                "pnl": 0.0,
-                "scores": [],
-                "wins": 0,
-                "losses": 0,
-            }
-
-        by_symbol[symbol]["trades"] += 1
-        by_symbol[symbol]["pnl"] += trade["pnl_eur"]
-
-        if trade["score"]:
-            by_symbol[symbol]["scores"].append(trade["score"])
-
-        if trade["pnl_eur"] > 0:
-            by_symbol[symbol]["wins"] += 1
-        elif trade["pnl_eur"] < 0:
-            by_symbol[symbol]["losses"] += 1
-
-    ranked = sorted(by_symbol.items(), key=lambda x: x[1]["pnl"], reverse=True)
-
-    rows = []
-    for symbol, data in ranked[:top_n]:
-        avg_score = mean(data["scores"]) if data["scores"] else 0.0
-        hit_rate = (data["wins"] / data["trades"] * 100.0) if data["trades"] else 0.0
-        rows.append(
-            {
-                "symbol": symbol,
-                "company": data["company"],
-                "trades": data["trades"],
-                "pnl": data["pnl"],
-                "avg_score": avg_score,
-                "hit_rate": hit_rate,
-            }
-        )
-    return rows
-
-
-def calculate_metrics(trades, initial_capital=10_000.0):
+def calculate_metrics(trades: list[dict[str, Any]], initial_capital: float = 10_000.0) -> dict[str, Any]:
     if not trades:
         return {
             "total_pnl": 0.0,
             "win_rate": 0.0,
             "avg_pnl": 0.0,
             "trades": 0,
-            "wins": 0,
-            "losses": 0,
             "sharpe": 0.0,
             "max_drawdown_pct": 0.0,
             "expectancy": 0.0,
             "final_equity": initial_capital,
-            "best_trade": 0.0,
-            "worst_trade": 0.0,
         }
 
     pnls = [t["pnl_eur"] for t in trades]
@@ -223,96 +134,413 @@ def calculate_metrics(trades, initial_capital=10_000.0):
         "win_rate": win_rate,
         "avg_pnl": avg_pnl,
         "trades": total,
-        "wins": len(wins),
-        "losses": len(losses),
         "sharpe": sharpe,
         "max_drawdown_pct": max_drawdown_pct,
         "expectancy": expectancy,
         "final_equity": equity_curve[-1] if equity_curve else initial_capital,
-        "best_trade": max(pnls) if pnls else 0.0,
-        "worst_trade": min(pnls) if pnls else 0.0,
     }
 
 
-def create_equity_chart(equity):
+def build_equity_curve(trades: list[dict[str, Any]], initial_capital: float = 10_000.0) -> list[float]:
+    equity: list[float] = []
+    value = initial_capital
+
+    for trade in trades:
+        value += trade["pnl_eur"]
+        equity.append(value)
+
+    return equity
+
+
+def calculate_max_drawdown_pct(equity_curve: list[float]) -> float:
+    if not equity_curve:
+        return 0.0
+
+    peak = equity_curve[0]
+    max_drawdown = 0.0
+
+    for value in equity_curve:
+        if value > peak:
+            peak = value
+        if peak > 0:
+            drawdown = ((peak - value) / peak) * 100.0
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+
+    return max_drawdown
+
+
+def summarize_top_symbols(trades: list[dict[str, Any]], top_n: int = 5) -> list[dict[str, Any]]:
+    by_symbol: dict[str, dict[str, Any]] = {}
+
+    for trade in trades:
+        symbol = trade["symbol"] or "-"
+        if symbol not in by_symbol:
+            by_symbol[symbol] = {
+                "company": trade["company"] or symbol,
+                "trades": 0,
+                "pnl": 0.0,
+                "scores": [],
+            }
+
+        by_symbol[symbol]["trades"] += 1
+        by_symbol[symbol]["pnl"] += trade["pnl_eur"]
+        if trade["score"]:
+            by_symbol[symbol]["scores"].append(trade["score"])
+
+    ranked = sorted(by_symbol.items(), key=lambda x: x[1]["pnl"], reverse=True)
+
+    rows: list[dict[str, Any]] = []
+    for symbol, data in ranked[:top_n]:
+        avg_score = mean(data["scores"]) if data["scores"] else 0.0
+        rows.append(
+            {
+                "symbol": symbol,
+                "company": data["company"],
+                "trades": data["trades"],
+                "pnl": data["pnl"],
+                "avg_score": avg_score,
+            }
+        )
+    return rows
+
+
+def create_chart(equity: list[float], output_path: str, title: str = "Equity Curve") -> str | None:
     if not equity:
         return None
 
     _ensure_reports_dir()
 
-    plt.figure(figsize=(8.6, 4.8))
+    plt.figure(figsize=(8, 4.5))
     plt.plot(equity, linewidth=2)
-    plt.title("Equity Curve")
+    plt.title(title)
     plt.xlabel("Trades")
     plt.ylabel("EUR")
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig(CHART_EQUITY_PATH, dpi=180)
+    plt.savefig(output_path, dpi=180)
     plt.close()
 
-    return CHART_EQUITY_PATH
+    return output_path
 
 
-def create_top_symbols_chart(top_symbols):
-    if not top_symbols:
+def create_realistic_chart(realistic_data: dict[str, Any] | None) -> str | None:
+    if not realistic_data:
         return None
 
-    _ensure_reports_dir()
+    curve = realistic_data.get("equity_curve", [])
+    if not curve:
+        return None
 
-    labels = [item["symbol"] for item in top_symbols]
-    values = [item["pnl"] for item in top_symbols]
+    equity = [float(point.get("equity_eur", 0.0)) for point in curve]
+    if not equity:
+        return None
 
-    plt.figure(figsize=(8.6, 4.8))
-    plt.bar(labels, values)
-    plt.title("Top-Aktien nach P/L")
-    plt.xlabel("Symbol")
-    plt.ylabel("P/L EUR")
-    plt.grid(True, axis="y")
-    plt.tight_layout()
-    plt.savefig(CHART_TOP_SYMBOLS_PATH, dpi=180)
-    plt.close()
-
-    return CHART_TOP_SYMBOLS_PATH
+    return create_chart(
+        equity,
+        REALISTIC_CHART_PATH,
+        title="Realistische Equity Curve (10.000 EUR)",
+    )
 
 
-def _performance_comment(metrics):
-    comments = []
+def build_report_context() -> dict[str, Any]:
+    """
+    Kompatibilitätsfunktion für gmail_api_report.py.
+    """
+    trades = load_trades()
+    realistic_data = load_realistic_backtest()
+    metrics = calculate_metrics(trades)
+    top_symbols = summarize_top_symbols(trades)
 
-    if metrics["total_pnl"] > 0:
-        comments.append("Die Simulation ist aktuell profitabel.")
-    elif metrics["total_pnl"] < 0:
-        comments.append("Die Simulation ist aktuell negativ.")
+    profile_name = get_active_profile_name()
+    profile_config = get_trading_config(profile_name)
+
+    context: dict[str, Any] = {
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "profile_name": profile_name,
+        "profile_config": profile_config,
+        "metrics": metrics,
+        "trades": trades,
+        "top_symbols": top_symbols,
+        "realistic_backtest": realistic_data,
+        "reports_dir": REPORTS_DIR,
+        "latest_pdf_path": LATEST_PDF_PATH,
+        "total_pnl": metrics.get("total_pnl", 0.0),
+        "win_rate": metrics.get("win_rate", 0.0),
+        "avg_pnl": metrics.get("avg_pnl", 0.0),
+        "trades_count": metrics.get("trades", 0),
+        "final_equity": metrics.get("final_equity", 0.0),
+    }
+
+    if realistic_data:
+        context["realistic_final_equity"] = realistic_data.get("final_equity", 0.0)
+        context["realistic_total_return_pct"] = realistic_data.get("total_return_pct", 0.0)
+        context["realistic_trade_count"] = realistic_data.get("trade_count", 0)
+        context["realistic_win_rate_pct"] = realistic_data.get("win_rate_pct", 0.0)
+
+    return context
+
+
+def _build_title_page(content: list[Any], title_style: ParagraphStyle, body_style: ParagraphStyle) -> None:
+    active_profile = get_active_profile_name()
+
+    content.append(Spacer(1, 4.0 * cm))
+    content.append(Paragraph("TRADING REPORT", title_style))
+    content.append(Paragraph("Premium v5", body_style))
+    content.append(Spacer(1, 1.2 * cm))
+    content.append(
+        Paragraph(
+            f"Generiert am: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            body_style,
+        )
+    )
+    content.append(Spacer(1, 0.4 * cm))
+    content.append(Paragraph(f"Aktives Profil: {active_profile}", body_style))
+    content.append(Spacer(1, 0.6 * cm))
+    content.append(
+        Paragraph(
+            "Nur Simulation. Keine echten Orders. Keine Anlageberatung.",
+            body_style,
+        )
+    )
+    content.append(PageBreak())
+
+
+def _build_profile_section(content: list[Any], section_style: ParagraphStyle, body_style: ParagraphStyle) -> None:
+    active_profile = get_active_profile_name()
+    cfg = get_trading_config(active_profile)
+
+    content.append(Paragraph("Aktives Profil", section_style))
+
+    table_data = [
+        ["Parameter", "Wert"],
+        ["Profilname", active_profile],
+        ["Initiales Kapital", f"{float(cfg.get('initial_capital', 0.0)):.2f} EUR"],
+        ["Max Positionen", str(cfg.get("max_positions", "-"))],
+        ["Stop-Loss", f"{float(cfg.get('stop_loss_pct', 0.0)):.2%}"],
+        ["Trailing Stop", f"{float(cfg.get('trailing_stop_pct', 0.0)):.2%}"],
+        ["Mindesthaltedauer", str(cfg.get("min_hold_bars", "-"))],
+        ["Cooldown", str(cfg.get("cooldown_bars", "-"))],
+        ["Max Trades/Woche", str(cfg.get("max_new_trades_per_week", "-"))],
+        ["Min Learned Score", f"{float(cfg.get('min_learned_score', 0.0)):.2f}"],
+        ["Max Volatilität 20", f"{float(cfg.get('max_volatility_20', 0.0)):.4f}"],
+        ["Min erwarteter Edge", f"{float(cfg.get('min_expected_edge_pct', 0.0)):.2%}"],
+    ]
+
+    table = Table(table_data, colWidths=[6 * cm, 6 * cm])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+    ]))
+
+    content.append(table)
+    content.append(Spacer(1, 16))
+    content.append(
+        Paragraph(
+            "Alle Backtest- und Trading-Ergebnisse in diesem Bericht basieren auf diesem aktiven Profil.",
+            body_style,
+        )
+    )
+    content.append(PageBreak())
+
+
+def _build_signal_section(
+    content: list[Any],
+    metrics: dict[str, Any],
+    chart_path: str | None,
+    top_symbols: list[dict[str, Any]],
+    section_style: ParagraphStyle,
+    body_style: ParagraphStyle,
+) -> None:
+    content.append(Paragraph("Signal- und Journal-Auswertung", section_style))
+
+    table_data = [
+        ["Metrik", "Wert"],
+        ["Trades", str(metrics["trades"])],
+        ["Gesamt P/L", f"{metrics['total_pnl']:.2f} EUR"],
+        ["Ø Trade", f"{metrics['avg_pnl']:.2f} EUR"],
+        ["Trefferquote", f"{metrics['win_rate']:.2f}%"],
+        ["Sharpe", f"{metrics['sharpe']:.2f}"],
+        ["Max Drawdown", f"{metrics['max_drawdown_pct']:.2f}%"],
+        ["Endkapital", f"{metrics['final_equity']:.2f} EUR"],
+    ]
+
+    table = Table(table_data, colWidths=[6 * cm, 6 * cm])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.black),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+    ]))
+
+    content.append(table)
+    content.append(Spacer(1, 16))
+
+    if chart_path:
+        content.append(Paragraph("Signalbasierte Equity Curve", section_style))
+        content.append(Image(chart_path, width=14 * cm, height=6 * cm))
+        content.append(Spacer(1, 16))
+
+    content.append(Paragraph("Top-Aktien nach Journal P/L", section_style))
+    if top_symbols:
+        top_table = [["Symbol", "Firma", "Trades", "P/L", "Ø Score"]]
+        for item in top_symbols:
+            top_table.append([
+                item["symbol"],
+                item["company"],
+                str(item["trades"]),
+                f"{item['pnl']:.2f} EUR",
+                f"{item['avg_score']:.2f}",
+            ])
+
+        top_tbl = Table(top_table, colWidths=[2.3 * cm, 6.0 * cm, 2.0 * cm, 3.0 * cm, 2.0 * cm])
+        top_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ]))
+        content.append(top_tbl)
     else:
-        comments.append("Die Simulation ist aktuell neutral.")
+        content.append(Paragraph("Keine Journal-Daten vorhanden.", body_style))
 
-    if metrics["sharpe"] >= 1.5:
-        comments.append("Die Sharpe Ratio wirkt stark.")
-    elif metrics["sharpe"] >= 0.75:
-        comments.append("Die Sharpe Ratio ist ordentlich, aber ausbaufähig.")
+
+def _build_realistic_section(
+    content: list[Any],
+    realistic_data: dict[str, Any] | None,
+    realistic_chart: str | None,
+    section_style: ParagraphStyle,
+    body_style: ParagraphStyle,
+) -> None:
+    content.append(Paragraph("Realistische 10.000-EUR-Schätzung", section_style))
+
+    if not realistic_data:
+        content.append(
+            Paragraph(
+                "Es liegt noch kein realistischer Backtest vor. Führe zuerst einen normalen Lauf mit main.py aus.",
+                body_style,
+            )
+        )
+        return
+
+    note = realistic_data.get("note")
+    if note:
+        content.append(Paragraph(f"Hinweis: {note}", body_style))
+        content.append(Spacer(1, 8))
+
+    table_data = [
+        ["Metrik", "Wert"],
+        ["Profil", str(realistic_data.get("profile_name", get_active_profile_name()))],
+        ["Zeitraum", str(realistic_data.get("period", "-"))],
+        ["Intervall", str(realistic_data.get("interval", "-"))],
+        ["Startkapital", f"{float(realistic_data.get('initial_capital', 0.0)):.2f} EUR"],
+        ["Endkapital", f"{float(realistic_data.get('final_equity', 0.0)):.2f} EUR"],
+        ["Gesamtrendite", f"{float(realistic_data.get('total_return_pct', 0.0)):.2f}%"],
+        ["CAGR", f"{float(realistic_data.get('cagr_pct', 0.0)):.2f}%"],
+        ["Max Drawdown", f"{float(realistic_data.get('max_drawdown_pct', 0.0)):.2f}%"],
+        ["Trades", str(int(realistic_data.get("trade_count", 0)))],
+        ["Trefferquote", f"{float(realistic_data.get('win_rate_pct', 0.0)):.2f}%"],
+        ["Gebühren", f"{float(realistic_data.get('fees_paid_eur', 0.0)):.2f} EUR"],
+        ["Slippage", f"{float(realistic_data.get('slippage_paid_eur', 0.0)):.2f} EUR"],
+    ]
+
+    table = Table(table_data, colWidths=[6 * cm, 6 * cm])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+    ]))
+
+    content.append(table)
+    content.append(Spacer(1, 16))
+
+    anti = realistic_data.get("anti_overtrading", {})
+    if anti:
+        content.append(Paragraph("Verwendete Regelparameter", section_style))
+        anti_table = [
+            ["Parameter", "Wert"],
+            ["Mindesthaltedauer", str(anti.get("min_hold_bars", "-"))],
+            ["Cooldown", str(anti.get("cooldown_bars", "-"))],
+            ["Max neue Trades/Tag", str(anti.get("max_new_trades_per_bar", "-"))],
+            ["Max Trades/Woche", str(anti.get("max_new_trades_per_week", "-"))],
+            ["Min Learned Score", f"{float(anti.get('min_learned_score', 0.0)):.2f}"],
+            ["Max Volatilität 20", f"{float(anti.get('max_volatility_20', 0.0)):.4f}"],
+            ["Min Stop-Abstand", f"{float(anti.get('min_stop_distance_pct', 0.0)):.2%}"],
+            ["Min erwarteter Edge", f"{float(anti.get('min_expected_edge_pct', 0.0)):.2%}"],
+        ]
+        anti_tbl = Table(anti_table, colWidths=[6 * cm, 6 * cm])
+        anti_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ]))
+        content.append(anti_tbl)
+        content.append(Spacer(1, 16))
+
+    symbols = realistic_data.get("symbols", [])
+    if symbols:
+        content.append(Paragraph("Verwendete Symbole: " + ", ".join(symbols), body_style))
+        content.append(Spacer(1, 12))
+
+    if realistic_chart:
+        content.append(Paragraph("Realistische Equity Curve", section_style))
+        content.append(Image(realistic_chart, width=14 * cm, height=6 * cm))
+        content.append(Spacer(1, 12))
+
+    trades = realistic_data.get("trades", [])
+    content.append(Paragraph("Letzte realistische Trades", section_style))
+    if trades:
+        trade_table = [["Symbol", "Entry", "Exit", "P/L", "Grund"]]
+        for item in trades[-10:]:
+            trade_table.append([
+                item.get("symbol", "-"),
+                str(item.get("entry_date", "-"))[:10],
+                str(item.get("exit_date", "-"))[:10],
+                f"{float(item.get('pnl_eur', 0.0)):.2f} EUR",
+                item.get("reason", "-"),
+            ])
+
+        tbl = Table(trade_table, colWidths=[2.0 * cm, 2.6 * cm, 2.6 * cm, 3.2 * cm, 4.8 * cm])
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ]))
+        content.append(tbl)
     else:
-        comments.append("Die Sharpe Ratio ist schwach und sollte überprüft werden.")
+        content.append(Paragraph("Keine realistischen Trades vorhanden.", body_style))
 
-    if metrics["max_drawdown_pct"] <= 10:
-        comments.append("Der Drawdown wirkt kontrolliert.")
-    elif metrics["max_drawdown_pct"] <= 20:
-        comments.append("Der Drawdown ist noch vertretbar.")
-    else:
-        comments.append("Der Drawdown ist relativ hoch.")
+    content.append(Spacer(1, 16))
+    content.append(
+        Paragraph(
+            "Diese Sektion ist die relevante Abschätzung der Frage: "
+            "Was hätte man mit 10.000 EUR ungefähr machen können?",
+            body_style,
+        )
+    )
 
-    return comments
 
-
-def build_pdf(metrics, equity_chart_path, top_symbols_chart_path, trades, top_symbols):
-    _ensure_reports_dir()
+def build_pdf(
+    metrics: dict[str, Any],
+    chart_path: str | None,
+    top_symbols: list[dict[str, Any]],
+    realistic_data: dict[str, Any] | None,
+    realistic_chart: str | None,
+) -> str:
     output_path = _build_output_path()
 
     doc = SimpleDocTemplate(
         output_path,
         pagesize=A4,
-        rightMargin=1.8 * cm,
-        leftMargin=1.8 * cm,
-        topMargin=1.8 * cm,
-        bottomMargin=1.8 * cm,
+        rightMargin=2 * cm,
+        leftMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
     )
 
     styles = getSampleStyleSheet()
@@ -320,150 +548,30 @@ def build_pdf(metrics, equity_chart_path, top_symbols_chart_path, trades, top_sy
     title_style = ParagraphStyle(
         name="PremiumTitle",
         parent=styles["Title"],
-        fontSize=24,
-        spaceAfter=12,
-    )
-
-    subtitle_style = ParagraphStyle(
-        name="PremiumSubtitle",
-        parent=styles["Normal"],
-        fontSize=11,
-        textColor=colors.grey,
-        spaceAfter=6,
+        fontSize=22,
+        spaceAfter=14,
     )
 
     section_style = ParagraphStyle(
         name="PremiumSection",
         parent=styles["Heading2"],
         fontSize=14,
-        spaceAfter=8,
+        spaceAfter=10,
     )
 
-    body_style = ParagraphStyle(
-        name="PremiumBody",
-        parent=styles["Normal"],
-        fontSize=10,
-        leading=14,
-        spaceAfter=5,
-    )
+    body_style = styles["Normal"]
 
-    content = []
+    content: list[Any] = []
 
-    content.append(Spacer(1, 4.2 * cm))
-    content.append(Paragraph("TRADING REPORT", title_style))
-    content.append(Paragraph("Premium v4 – echte Simulationsdaten", subtitle_style))
-    content.append(Spacer(1, 1.0 * cm))
-    content.append(
-        Paragraph(
-            f"Generiert am: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            body_style,
-        )
-    )
-    content.append(
-        Paragraph(
-            f"Datengrundlage: {len(trades)} abgeschlossene Simulations-Trades",
-            body_style,
-        )
-    )
+    _build_title_page(content, title_style, body_style)
+    _build_profile_section(content, section_style, body_style)
+    _build_realistic_section(content, realistic_data, realistic_chart, section_style, body_style)
     content.append(PageBreak())
-
-    content.append(Paragraph("Executive Summary", section_style))
-    for line in _performance_comment(metrics):
-        content.append(Paragraph(f"• {line}", body_style))
-    content.append(Spacer(1, 10))
-
-    kpi_data = [
-        ["KPI", "Wert", "Bedeutung"],
-        ["Trades", str(metrics["trades"]), "Anzahl abgeschlossener Trades"],
-        ["Gesamt P/L", f"{metrics['total_pnl']:.2f} EUR", "Gesamter Gewinn/Verlust"],
-        ["Ø Trade", f"{metrics['avg_pnl']:.2f} EUR", "Durchschnitt pro Trade"],
-        ["Trefferquote", f"{metrics['win_rate']:.2f} %", "Anteil Gewinntrades"],
-        ["Sharpe", f"{metrics['sharpe']:.2f}", "Rendite relativ zur Schwankung"],
-        ["Max Drawdown", f"{metrics['max_drawdown_pct']:.2f} %", "Größter Rückgang vom Hoch"],
-        ["Expectancy", f"{metrics['expectancy']:.2f} EUR", "Erwartungswert pro Trade"],
-        ["Best Trade", f"{metrics['best_trade']:.2f} EUR", "Bester Einzeltrade"],
-        ["Worst Trade", f"{metrics['worst_trade']:.2f} EUR", "Schwächster Einzeltrade"],
-        ["Endkapital", f"{metrics['final_equity']:.2f} EUR", "Startkapital 10.000 EUR + P/L"],
-    ]
-
-    kpi_table = Table(kpi_data, colWidths=[4.1 * cm, 4.1 * cm, 7.0 * cm])
-    kpi_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.black),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ]
-        )
-    )
-    content.append(kpi_table)
-    content.append(Spacer(1, 18))
-
-    content.append(Paragraph("Equity Curve", section_style))
-    if equity_chart_path and os.path.exists(equity_chart_path):
-        content.append(Image(equity_chart_path, width=16 * cm, height=8.2 * cm))
-    else:
-        content.append(Paragraph("Keine Equity Curve verfügbar.", body_style))
-
-    content.append(Spacer(1, 18))
-    content.append(Paragraph("Top-Aktien nach Performance", section_style))
-
-    if top_symbols_chart_path and os.path.exists(top_symbols_chart_path):
-        content.append(Image(top_symbols_chart_path, width=16 * cm, height=8.2 * cm))
-    else:
-        content.append(Paragraph("Kein Top-Aktien-Chart verfügbar.", body_style))
-
-    content.append(PageBreak())
-    content.append(Paragraph("Top-Aktien – Detailübersicht", section_style))
-
-    if top_symbols:
-        top_table_data = [["Symbol", "Firma", "Trades", "P/L EUR", "Trefferquote", "Ø Score"]]
-        for item in top_symbols:
-            top_table_data.append(
-                [
-                    item["symbol"],
-                    item["company"],
-                    str(item["trades"]),
-                    f"{item['pnl']:.2f}",
-                    f"{item['hit_rate']:.2f} %",
-                    f"{item['avg_score']:.2f}",
-                ]
-            )
-
-        top_table = Table(
-            top_table_data,
-            colWidths=[2.1 * cm, 6.6 * cm, 1.9 * cm, 2.4 * cm, 2.7 * cm, 2.0 * cm],
-        )
-        top_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.black),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ]
-            )
-        )
-        content.append(top_table)
-    else:
-        content.append(Paragraph("Keine Top-Aktien vorhanden.", body_style))
-
-    content.append(Spacer(1, 18))
-    content.append(Paragraph("Hinweis", section_style))
-    content.append(
-        Paragraph(
-            "Nur Simulation. Keine echten Orders. Keine Anlageberatung.",
-            body_style,
-        )
-    )
+    _build_signal_section(content, metrics, chart_path, top_symbols, section_style, body_style)
 
     doc.build(content)
 
-    _copy_to_latest(output_path)
-    _cleanup_old_reports()
+    shutil.copyfile(output_path, LATEST_PDF_PATH)
 
     print(f"PDF erstellt: {output_path}")
     print(f"Latest aktualisiert: {LATEST_PDF_PATH}")
@@ -471,32 +579,17 @@ def build_pdf(metrics, equity_chart_path, top_symbols_chart_path, trades, top_sy
     return output_path
 
 
-def build_report_context():
+def run() -> str:
     trades = load_trades()
     metrics = calculate_metrics(trades)
     equity = build_equity_curve(trades)
+    chart = create_chart(equity, CHART_PATH, title="Signalbasierte Equity Curve")
     top_symbols = summarize_top_symbols(trades)
 
-    return {
-        "trades": trades,
-        "metrics": metrics,
-        "equity": equity,
-        "top_symbols": top_symbols,
-    }
+    realistic_data = load_realistic_backtest()
+    realistic_chart = create_realistic_chart(realistic_data)
 
-
-def run():
-    context = build_report_context()
-    equity_chart = create_equity_chart(context["equity"])
-    top_symbols_chart = create_top_symbols_chart(context["top_symbols"])
-
-    return build_pdf(
-        metrics=context["metrics"],
-        equity_chart_path=equity_chart,
-        top_symbols_chart_path=top_symbols_chart,
-        trades=context["trades"],
-        top_symbols=context["top_symbols"],
-    )
+    return build_pdf(metrics, chart, top_symbols, realistic_data, realistic_chart)
 
 
 if __name__ == "__main__":

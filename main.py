@@ -1,27 +1,17 @@
 import argparse
-import os
 import time
 
+from env_loader import load_env
 from dependency_check import check_dependencies
 
+load_env()
 
-def _early_fix_requested():
-    import sys
-    return "--fix" in sys.argv
-
-
-if not check_dependencies(auto_install=_early_fix_requested()):
-    print("Abbruch: Fehlende Dependencies.")
-    raise SystemExit(1)
-
-from analysis_engine import (
-    build_future_candidates as _build_future_candidates,
-    get_signal_from_df as _get_signal_from_df,
-    run_analysis,
-)
 from cli import choose_interval as _choose_interval
-from env_loader import load_env
-from gmail_api_report import send_report_email
+from analysis_engine import (
+    run_analysis,
+    get_signal_from_df as _get_signal_from_df,
+    build_future_candidates as _build_future_candidates,
+)
 from output import (
     print_runtime,
     set_pro_mode,
@@ -29,9 +19,19 @@ from output import (
     print_explanations,
 )
 from report_pdf import run as run_pdf_report
-
-
-load_env()
+from gmail_api_report import send_report_email
+from trading_engine import (
+    build_trading_plan,
+    print_trading_plan,
+    simulate_trading_decisions,
+    print_trading_decisions,
+)
+from walkforward import run_walk_forward
+from performance import run_live, print_performance
+from dashboard_live import run_live_terminal
+from mini_trading_system import run_mini_trading_system
+from realistic_backtest import run_realistic_backtest, print_realistic_backtest_summary
+from config import get_active_profile_name
 
 
 def normalize_period_input(period):
@@ -53,244 +53,146 @@ def normalize_period_input(period):
         "3j": "3y",
         "3y": "3y",
     }
-    return mapping.get(str(period).strip().lower(), period)
+    if period is None:
+        return None
+    return mapping.get(str(period).lower(), period)
 
 
 def choose_interval(period):
-    normalized = normalize_period_input(period)
-    return _choose_interval(normalized)
+    period = normalize_period_input(period)
+    return _choose_interval(period)
 
 
-def get_signal_from_df(df, rate_to_eur_latest):
-    return _get_signal_from_df(df, rate_to_eur_latest)
+def get_signal_from_df(df, rate):
+    return _get_signal_from_df(df, rate)
 
 
 def build_future_candidates(analyzed, top_n):
     return _build_future_candidates(analyzed, top_n)
 
 
-def _parse_human_number(value):
-    text = str(value).strip().lower().replace("_", "")
+def parse_args():
+    """
+    Test-kompatible Funktion:
+    gibt weiterhin ein Tuple zurück.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--period", default=None)
+    parser.add_argument("--top", type=int, default=5)
+    parser.add_argument("--min-volume", type=int, default=1000000)
+    parser.add_argument("-l", action="store_true")
 
-    if not text:
-        raise argparse.ArgumentTypeError("Leerer Zahlenwert ist nicht erlaubt.")
+    args = parser.parse_args()
 
-    multipliers = {
-        "k": 1_000,
-        "m": 1_000_000,
-    }
-
-    suffix = text[-1]
-    if suffix in multipliers:
-        try:
-            return int(float(text[:-1]) * multipliers[suffix])
-        except ValueError as exc:
-            raise argparse.ArgumentTypeError(f"Ungültiger Zahlenwert: {value}") from exc
-
-    try:
-        return int(text)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"Ungültiger Zahlenwert: {value}") from exc
+    return (
+        bool(args.l),
+        args.top,
+        args.min_volume,
+        normalize_period_input(args.period),
+    )
 
 
-def _build_parser():
+def _build_cli_parser():
+    active_profile = get_active_profile_name()
+
     parser = argparse.ArgumentParser(
         prog="python main.py",
         description=(
-            "Paper-Trading Simulator\n"
-            "========================================\n"
-            "Analyse- und Backtesting-System für Aktien.\n\n"
-            "Hinweis:\n"
-            "  - Nur Simulation\n"
-            "  - Keine echten Orders\n"
-            "  - Keine Broker-Anbindung\n"
+            "Trading-Bot für Analyse, Backtesting und Simulation.\n"
+            "Es werden keine echten Orders ausgeführt und keine Broker angebunden.\n"
+            f"Aktives Regel-/Trading-Profil: {active_profile}"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
+        epilog=(
+            "Beispiele:\n"
+            "  python main.py\n"
+            "  python main.py -p 6mo -t 10\n"
+            "  python main.py --live\n"
+            "  python main.py --dashboard\n"
+            "  python main.py --mini-system\n"
+            "  python main.py --no-pdf\n"
+            "  python main.py --mail\n"
+        ),
     )
 
     parser.add_argument(
         "-p",
         "--period",
-        dest="period",
         default=None,
-        help=(
-            "Analysezeitraum\n"
-            "----------------------------------------\n"
-            "Kurzformen:\n"
-            "  1t, 1w, 1m, 3m, 6m, 1j, 2j, 3j\n\n"
-            "Langformen:\n"
-            "  1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 3y\n\n"
-            "Default: interaktive Auswahl"
-        ),
+        help="Analysezeitraum, z. B. 1mo, 3mo, 6mo oder 1y",
     )
-
     parser.add_argument(
         "-t",
         "--top",
-        dest="top",
-        type=_parse_human_number,
+        type=int,
         default=5,
-        metavar="N",
-        help=(
-            "Anzahl der Top-Aktien für Backtest (Default: 5)\n"
-            "Erlaubt auch Suffixe wie: 10, 25, 1k"
-        ),
+        help="Anzahl der Top-Kandidaten für Auswahl und Auswertung",
     )
-
     parser.add_argument(
         "-mv",
         "--min-volume",
-        dest="min_volume",
-        type=_parse_human_number,
-        default=1_000_000,
-        metavar="VOLUME",
-        help=(
-            "Minimales durchschnittliches Handelsvolumen (Default: 1000000)\n"
-            "Erlaubt auch Suffixe wie: 500k, 1m"
-        ),
+        type=int,
+        default=1000000,
+        help="Minimales durchschnittliches Handelsvolumen",
     )
 
     parser.add_argument(
         "-l",
         action="store_true",
-        help="Pro-Modus: Detailausgabe + Live-Fortschritt + Farben/Highlights/Warnungen",
+        help="Pro-/Live-Modus starten",
     )
-
-    parser.add_argument(
-        "--long",
-        action="store_true",
-        help="Nur Detailmodus (ohne Pro-Modus)",
-    )
-
     parser.add_argument(
         "--live",
         action="store_true",
-        help="Nur Live-Fortschritt",
+        help="Live-Tabelle mit laufend aktualisierten Score-Daten anzeigen",
     )
-
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Echtes Live-Terminal mit Auto-Refresh starten",
+    )
+    parser.add_argument(
+        "--long",
+        action="store_true",
+        help="Ausführlichere Detailausgabe aktivieren",
+    )
     parser.add_argument(
         "--beginner",
         action="store_true",
-        help="Einsteiger-Modus: zusätzliche Erklärungen am Ende der Ausgabe",
+        help="Zusätzliche Erklärungen für Einsteiger anzeigen",
+    )
+    parser.add_argument(
+        "--mini-system",
+        action="store_true",
+        help="Mini-Trading-System mit gespeichertem Depotzustand starten",
     )
 
     parser.add_argument(
         "--mail",
         action="store_true",
-        help="Verschickt den Report per Gmail API als E-Mail",
+        help="Erzeugte Reports zusätzlich per Mail versenden",
     )
-
-    parser.add_argument(
-        "--mail-to",
-        dest="mail_to",
-        default=None,
-        help="Empfängeradresse für den Mailversand (überschreibt MAIL_TO)",
-    )
-
     parser.add_argument(
         "--no-pdf",
         action="store_true",
-        help="Automatischen PDF-Report nach dem Lauf deaktivieren",
+        help="PDF-Erzeugung deaktivieren",
     )
-
     parser.add_argument(
-        "--fix",
+        "--skip-realistic-backtest",
         action="store_true",
-        help="Installiert fehlende Python-Abhängigkeiten automatisch vor dem Start",
-    )
-
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="trading-bot v3.0",
-    )
-
-    parser.epilog = (
-        "\nBeispiele:\n"
-        "----------------------------------------\n"
-        "  python main.py\n"
-        "  python main.py -t 10 -p 3y\n"
-        "  python main.py -mv 500k\n"
-        "  python main.py --live\n"
-        "  python main.py --long\n"
-        "  python main.py -l\n"
-        "  python main.py --beginner\n"
-        "  python main.py --mail\n"
-        "  python main.py --mail --mail-to thorsten@example.com\n"
-        "  python main.py --fix\n"
-        "  python main.py --no-pdf\n\n"
-        "Weitere Tools:\n"
-        "----------------------------------------\n"
-        "  python walk_forward.py        Langfrist-Test\n"
-        "  python daily_report.py        Tagesreport\n"
-        "  python report_pdf.py          Premium-PDF erzeugen\n"
-        "  man ./docs/trading-bot.1      Manpage anzeigen\n"
+        help="Realistische 10.000-EUR-Schätzung überspringen",
     )
 
     return parser
 
 
-def _parse_cli_namespace():
-    parser = _build_parser()
-    args = parser.parse_args()
-
-    if args.period:
-        args.period = normalize_period_input(args.period)
-
-    args.long_mode = bool(args.long or args.l)
-    args.live_mode = bool(args.live or args.l)
-    args.pro_mode = bool(args.l)
-    args.beginner_mode = bool(args.beginner)
-
-    return args
+def _parse_cli():
+    return _build_cli_parser().parse_args()
 
 
-def parse_args():
-    args = _parse_cli_namespace()
-    return args.long_mode, args.top, args.min_volume, args.period
+def _run_mail(send_mail, pdf_path):
+    import os
 
-
-def _choose_period_interactively():
-    print("\nZeitraum wählen:")
-    print("  1t  = 1 Tag")
-    print("  1w  = 1 Woche")
-    print("  1m  = 1 Monat")
-    print("  3m  = 3 Monate")
-    print("  6m  = 6 Monate")
-    print("  1j  = 1 Jahr")
-    print("  2j  = 2 Jahre")
-    print("  3j  = 3 Jahre\n")
-
-    selected = input("-> ").strip().lower()
-    return normalize_period_input(selected or "1m")
-
-
-def _resolve_existing_pdf():
-    latest_path = os.path.join("reports", "trading_report_latest.pdf")
-    if os.path.exists(latest_path):
-        return latest_path
-    return None
-
-
-def _run_auto_pdf_report(skip_pdf):
-    if skip_pdf:
-        return _resolve_existing_pdf()
-
-    print("\n==============================")
-    print("AUTO-PDF-REPORT")
-    print("------------------------------")
-    try:
-        pdf_path = run_pdf_report()
-        print("Premium-PDF erfolgreich erzeugt.")
-        print("==============================\n")
-        return pdf_path
-    except Exception as exc:
-        print(f"PDF-Report konnte nicht erzeugt werden: {exc}")
-        print("==============================\n")
-        return None
-
-
-def _run_mail_report(send_mail, mail_to, attachment_path):
     if not send_mail:
         return
 
@@ -299,58 +201,121 @@ def _run_mail_report(send_mail, mail_to, attachment_path):
     print("------------------------------")
 
     try:
-        if not attachment_path:
-            raise RuntimeError(
-                "Kein PDF-Report vorhanden. Erzeuge zuerst einen Report oder nutze main.py ohne --no-pdf."
-            )
+        if not pdf_path:
+            raise RuntimeError("Kein PDF vorhanden")
 
-        attachments = [attachment_path]
+        attachments = [pdf_path]
 
-        daily_html = os.path.join("reports", "daily_report_latest.html")
-        daily_txt = os.path.join("reports", "daily_report_latest.txt")
+        if os.path.exists("reports/daily_report_latest.html"):
+            attachments.append("reports/daily_report_latest.html")
 
-        if os.path.exists(daily_html):
-            attachments.append(daily_html)
-        if os.path.exists(daily_txt):
-            attachments.append(daily_txt)
+        send_report_email(attachment_paths=attachments)
 
-        send_report_email(
-            attachment_paths=attachments,
-            mail_to_override=mail_to,
-        )
     except Exception as exc:
-        print(f"Mailversand fehlgeschlagen: {exc}")
+        print("Mail-Fehler:", exc)
 
     print("==============================\n")
 
 
+def _symbols_for_realistic_backtest(result, top_n: int) -> list[str]:
+    symbols = []
+
+    for item in result.get("future_candidates", []):
+        sym = item.get("symbol")
+        if sym:
+            symbols.append(sym)
+
+    if symbols:
+        return symbols[:top_n]
+
+    for item in result.get("results", []):
+        sym = item.get("symbol")
+        if sym:
+            symbols.append(sym)
+
+    return symbols[:top_n]
+
+
 def run():
-    args = _parse_cli_namespace()
+    args = _parse_cli()
 
-    period = args.period or _choose_period_interactively()
+    if not check_dependencies():
+        print("Fehlende Abhängigkeiten. Der Start wurde abgebrochen.")
+        return
 
-    set_pro_mode(args.pro_mode)
-    set_beginner_mode(args.beginner_mode)
+    if args.dashboard:
+        run_live_terminal()
+        return
 
-    start_time = time.time()
+    if args.mini_system:
+        run_mini_trading_system(
+            total_capital=10_000.0,
+            top_n=args.top,
+            period=normalize_period_input(args.period) or "6mo",
+            interval="1d",
+        )
+        return
+
+    if args.live or args.l:
+        run_live()
+        return
+
+    set_pro_mode(args.l)
+    set_beginner_mode(args.beginner)
+
+    start = time.time()
+    active_profile = get_active_profile_name()
+
+    print("\n========================================")
+    print(" AKTIVES PROFIL")
+    print("========================================")
+    print(active_profile)
+    print("========================================\n")
+
+    period = normalize_period_input(args.period) or "1mo"
 
     result = run_analysis(
         period=period,
         top_n=args.top,
         min_volume=args.min_volume,
-        long_mode=args.long_mode,
-        show_progress=args.live_mode,
+        long_mode=args.long,
+        show_progress=False,
     )
 
-    pdf_path = _run_auto_pdf_report(skip_pdf=args.no_pdf)
-    _run_mail_report(
-        send_mail=args.mail,
-        mail_to=args.mail_to,
-        attachment_path=pdf_path,
-    )
+    plan = build_trading_plan(total_capital=1000, top_n=args.top)
+    print_trading_plan(plan)
 
-    runtime_seconds = time.time() - start_time
-    print_runtime(runtime_seconds)
+    current_positions = {}
+
+    decisions = simulate_trading_decisions(
+        analysis_result=result,
+        total_capital=1000.0,
+        current_positions=current_positions,
+        peak_equity=None,
+    )
+    print_trading_decisions(decisions)
+
+    run_walk_forward()
+
+    if not args.skip_realistic_backtest:
+        symbols = _symbols_for_realistic_backtest(result, top_n=args.top)
+        realistic = run_realistic_backtest(
+            symbols=symbols,
+            period=period,
+            interval="1d",
+        )
+        print_realistic_backtest_summary(realistic)
+
+    print_performance()
+
+    pdf_path = None
+    if not args.no_pdf:
+        pdf_path = run_pdf_report()
+
+    _run_mail(args.mail, pdf_path)
+
+    runtime = time.time() - start
+    print_runtime(runtime)
     print_explanations()
 
     return result
