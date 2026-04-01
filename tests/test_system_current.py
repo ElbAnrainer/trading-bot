@@ -1,5 +1,9 @@
 import os
 import importlib
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_required_modules_importable():
@@ -36,7 +40,7 @@ def test_required_files_exist():
     ]
 
     for path in required_files:
-        assert os.path.exists(path), f"Datei fehlt: {path}"
+        assert (PROJECT_ROOT / path).exists(), f"Datei fehlt: {path}"
 
 
 def test_reports_directory_exists_or_can_be_created():

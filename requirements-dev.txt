@@ -2,3 +2,6 @@ pytest>=8.0.0
 pandas>=2.0.0
 yfinance>=0.2.36
 lxml>=5.0.0
+google-auth
+google-auth-oauthlib
+google-api-python-client

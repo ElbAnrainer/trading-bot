@@ -22,6 +22,8 @@ DAILY_REPORT_TXT = os.path.join(REPORTS_DIR, "daily_report_latest.txt")
 DAILY_REPORT_CSV = os.path.join(REPORTS_DIR, "daily_report_latest.csv")
 DAILY_REPORT_XML = os.path.join(REPORTS_DIR, "daily_report_latest.xml")
 DAILY_REPORT_PDF = os.path.join(REPORTS_DIR, "daily_report_latest.pdf")
+STATE_FILE = os.path.join(REPORTS_DIR, "state.json")
+BROKER_FILE = os.path.join(REPORTS_DIR, "broker.json")
 
 BASE_CURRENCY = "EUR"
 

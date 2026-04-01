@@ -13,6 +13,10 @@ def load_json(file, default):
 
 
 def save_json(file, data):
+    parent = os.path.dirname(file)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
     with open(file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
