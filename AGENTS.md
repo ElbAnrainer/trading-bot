@@ -1,90 +1,102 @@
 # AGENTS.md
 
-## Purpose
+## Zweck
 
-This repository is a Python trading simulation and analysis project.
+Dieses Repository ist ein Python-Projekt fuer Trading-Simulation, Analyse,
+Backtesting, Reporting, Dashboarding und Terminal-Monitoring.
 
-It is used for:
-- backtesting
-- simulation
-- reporting
-- dashboarding
-- terminal-based monitoring
+Es dient nicht fuer:
 
-It is not used for:
-- real broker connections
-- real orders
-- investment advice
-- production live trading deployment
+- echte Broker-Anbindungen
+- echte Orders
+- Anlageberatung
+- produktiven Live-Handel
 
-Any agent working in this repository should preserve that boundary.
+Jede Aenderung soll diese Grenze klar erhalten.
 
-## Repository Reality
+## Repo-Realitaet
 
-This project is mostly organized as root-level Python modules instead of a package tree.
+Das Projekt besteht ueberwiegend aus Python-Modulen im Repo-Root und nicht aus
+einem klassischen Paketbaum.
 
-Important entry points and core modules:
-- `main.py` -> main CLI entry point
-- `run.sh` -> local launcher / interactive terminal flow
-- `realistic_backtest.py` -> realistic portfolio backtest logic
-- `mini_trading_system.py` -> persistent mini trading workflow
-- `trading_engine.py` -> buy/sell decision planning
-- `analysis_engine.py` -> analysis pipeline
-- `dashboard.py` and `dashboard_live.py` -> dashboard output
-- `report_pdf.py`, `daily_report.py`, `gmail_api_report.py` -> reporting
-- `portfolio_state.py` and `state.py` -> persisted state
-- `tests/` -> pytest suite
-- `reports/` -> generated output and persisted runtime data
+Wichtige Einstiegspunkte und Kernmodule:
 
-Do not assume directories like `/data`, `/strategy`, or `/execution` exist here. They do not reflect the current project layout.
+- `main.py` -> Haupt-CLI
+- `run.sh` -> lokaler Launcher / interaktiver Terminal-Flow
+- `run_walk_forward.sh` -> kanonischer Walk-Forward-Skriptstart
+- `realistic_backtest.py` -> realistischer Portfolio-Backtest
+- `mini_trading_system.py` -> persistenter Mini-Trading-Workflow
+- `trading_engine.py` -> Buy-/Sell-Planung
+- `analysis_engine.py` -> Analysepipeline
+- `dashboard.py` und `dashboard_live.py` -> Dashboard-Ausgabe
+- `report_pdf.py`, `daily_report.py`, `gmail_api_report.py` -> Reporting
+- `portfolio_state.py` und `state.py` -> persistenter Zustand
+- `tests/` -> `pytest`-Suite
+- `reports/` -> generierte Ausgaben und persistente Laufzeitdaten
+- `docs/` -> Dokumentation, getrennt nach `manual/` und `refactor/`
 
-## Environment
+Nicht von Verzeichnissen wie `/data`, `/strategy` oder `/execution`
+ausgehen. Diese Struktur existiert hier nicht.
 
-Local development currently uses:
-- Python from `.venv`
+## Umgebung
+
+Lokale Entwicklung verwendet aktuell:
+
+- Python aus `.venv`
 - `pytest`
 - `pandas`
 - `yfinance`
 - `matplotlib`
 - `reportlab`
-- optional Google mail dependencies for report delivery
+- optionale Google-Mail-Abhaengigkeiten fuer den Report-Versand
 
-Use the local environment first:
+Bevorzugte Basisbefehle:
 
 ```bash
 source .venv/bin/activate
 ```
 
-Common validation commands:
+Haeufige Validierungen:
 
 ```bash
-.venv/bin/python -m pytest -p no:cacheprovider -q
-env MPLCONFIGDIR=/tmp/mpl-trading-bot .venv/bin/python main.py --help
+./.venv/bin/python -m pytest -p no:cacheprovider -q
+env MPLCONFIGDIR=/tmp/mpl-trading-bot ./.venv/bin/python main.py --help
 ```
 
-When running tests or CLI commands that import matplotlib, setting `MPLCONFIGDIR=/tmp/mpl-trading-bot` is preferred to avoid local cache permission noise.
+Wenn Tests oder CLI-Kommandos `matplotlib` importieren, ist
+`MPLCONFIGDIR=/tmp/mpl-trading-bot` bevorzugt, um lokale Cache- und
+Berechtigungsprobleme zu vermeiden.
 
-## Development Rules
+## Arbeitsregeln fuer Agenten
 
-- Keep changes consistent with a simulation-only system.
-- Prefer small, local changes over broad rewrites.
-- Add or update tests when changing trading logic, state handling, reporting logic, or selection logic.
-- Prefer deterministic unit tests with monkeypatching over network-dependent tests.
-- Avoid introducing hidden behavior that depends on live network calls during tests.
-- Preserve persisted state formats unless you intentionally migrate them.
-- Use existing config values from `config.py` and trading profile helpers instead of scattering new constants.
+- Immer vom Repo-Root arbeiten. Die Tests verlassen sich auf `pythonpath = .`.
+- Wenn vorhanden, `.venv/bin/python` und `.venv/bin/pytest` verwenden.
+- Benutzernahe Texte, CLI-Hilfe und Reports sind ueberwiegend auf Deutsch.
+  Diesen Stil bei neuen Ausgaben beibehalten.
+- `.env` wird ueber `env_loader.py` geladen. Keine Secrets, OAuth-Dateien oder
+  Tokens committen.
+- Mailversand existiert (`gmail_api_report.py`, `--mail`, `.env`-Werte), soll
+  aber nicht in Tests oder Smoke-Checks ausgeloest werden.
+- Generierte Dateien in `reports/` nicht manuell pflegen, wenn stattdessen die
+  erzeugende Python-Quelle angepasst werden kann.
+- Persistente Formate fuer Zustandsdateien moeglichst stabil halten, es sei
+  denn, eine bewusste Migration ist Teil der Aenderung.
+- Bestehende Werte aus `config.py` und den Trading-Profilen nutzen, statt neue
+  verteilte Konstanten einzufuehren.
 
-## Trading and Modeling Constraints
+## Trading- und Modellierungsgrenzen
 
-Agents should explicitly guard against:
-- lookahead bias
-- future data leakage
-- unrealistic fills
-- missing fees or slippage assumptions
-- breaking cooldown / holding-period logic
-- mixing simulation behavior with implied real execution behavior
+Bei fachlichen Aenderungen immer explizit auf folgende Risiken achten:
 
-If a change touches:
+- Lookahead Bias
+- Future Data Leakage
+- unrealistische Fills
+- fehlende Gebuehren oder Slippage-Annahmen
+- kaputte Cooldown- oder Holding-Period-Regeln
+- Vermischung von Simulation mit impliziter Real-Ausfuehrung
+
+Wenn eine Aenderung eines dieser Module betrifft:
+
 - `realistic_backtest.py`
 - `mini_trading_system.py`
 - `trading_engine.py`
@@ -92,59 +104,76 @@ If a change touches:
 - `risk.py`
 - `advanced_risk.py`
 
-then review the effect on:
-- fees
-- slippage
-- stop logic
-- drawdown control
-- cooldown behavior
-- state persistence
-- test determinism
+dann die Auswirkungen auf Folgendes mitpruefen:
 
-## State and Output
+- Gebuehren
+- Slippage
+- Stop-Logik
+- Drawdown-Kontrolle
+- Cooldown-Verhalten
+- State-Persistenz
+- Test-Determinismus
 
-This repository intentionally uses persistent files in `reports/`.
+## Zustand und Ausgaben
 
-Important examples:
-- learned scores
-- portfolio state
-- dashboard output
-- latest report artifacts
-- realistic backtest summaries
+Dieses Repository ist nicht zustandslos. Es nutzt persistente Dateien in
+`reports/`.
 
-Agents must not assume the project is stateless.
+Wichtige Beispiele:
 
-When changing code that writes history or state, keep field names and time handling consistent across readers and writers.
+- gelernte Scores
+- Portfolio-State
+- Dashboard-Ausgaben
+- aktuelle Report-Artefakte
+- Zusammenfassungen realistischer Backtests
 
-## Testing Expectations
+Wenn Code Historie oder Zustand schreibt, Feldnamen und Zeitbehandlung ueber
+Leser und Schreiber hinweg konsistent halten.
 
-Before finishing meaningful code changes, prefer running:
+## Bekannte Stolperstellen
+
+- `walk_forward.py` ist das kanonische Walk-Forward-Modul.
+- `walkforward.py` ist ein Kompatibilitaets-Shim fuer alte Importe.
+- `run_walk_forward.sh` ist der kanonische Skriptname fuer den Walk-Forward-Lauf.
+- `run_walk_forwad.sh` ist ein Legacy-/Typo-Wrapper.
+- `performance.py` verwendet `portfolio.py`.
+- `porfolio.py` ist ein Legacy-/Typo-Shim auf `portfolio.py`.
+- `dependency_check.py` kann fehlende Pakete installieren, sollte aber nicht
+  nebenbei in Tests oder Reviews ausgefuehrt werden.
+
+## Test-Erwartungen
+
+Vor dem Abschluss relevanter Codeaenderungen bevorzugt ausfuehren:
 
 ```bash
-.venv/bin/python -m pytest -p no:cacheprovider -q
+./.venv/bin/python -m pytest -p no:cacheprovider -q
 ```
 
-For focused work, run the relevant test module first, then the full suite if the change is non-trivial.
+Bei fokussierter Arbeit zuerst den betroffenen Test, danach bei nicht-trivialen
+Aenderungen die gesamte Suite laufen lassen.
 
-Good tests in this repository are:
-- fast
-- local
-- deterministic
-- explicit about financial assumptions
+Gute Tests in diesem Repository sind:
 
-## Review Guidance
+- schnell
+- lokal
+- deterministisch
+- explizit in ihren finanziellen Annahmen
 
-When reviewing or proposing changes:
-- call out unrealistic assumptions
-- flag missing fees, slippage, cooldowns, or drawdown controls
-- prefer simple explanations
-- state assumptions clearly
-- mention operational risk if state files, reports, or optional mail flows are affected
+## Review-Hinweise
 
-## Path Note
+Bei Reviews oder Aenderungsvorschlaegen:
 
-The active repository is the workspace copy under:
+- unrealistische Annahmen benennen
+- fehlende Fees, Slippage, Cooldowns oder Drawdown-Grenzen markieren
+- einfache und direkte Erklaerungen bevorzugen
+- Annahmen klar aussprechen
+- auf operative Risiken hinweisen, wenn Zustandsdateien, Reports oder optionale
+  Mail-Flows betroffen sind
 
-`/Users/thorsten/development/codex/Börse/trading-bot`
+## Abschlusskriterien
 
-Do not treat the older copy under `/Users/thorsten/development/trading-bot` as the primary working tree.
+- Fuer Codeaenderungen mindestens die betroffenen Tests ausfuehren, idealerweise
+  die komplette Suite.
+- Bei Aenderungen an Reports oder CLIs einen kurzen Smoke-Test ausfuehren.
+- Keine unbeabsichtigten Artefakte oder Geheimnisse in `reports/` oder im Repo
+  hinterlassen.
