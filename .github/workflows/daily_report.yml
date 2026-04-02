@@ -5,9 +5,19 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   daily-report:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MPLCONFIGDIR: /tmp/mpl-trading-bot
 
     steps:
       - name: Repository auschecken
@@ -16,13 +26,18 @@ jobs:
       - name: Python einrichten
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install matplotlib reportlab google-auth google-auth-oauthlib google-api-python-client
+          python -m pip install -r requirements.txt
+
+      - name: CLI Smoke Test
+        run: |
+          python main.py --help >/dev/null
 
       - name: Google OAuth Dateien wiederherstellen
         shell: bash
