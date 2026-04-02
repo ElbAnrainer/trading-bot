@@ -1,4 +1,5 @@
 import sys
+from argparse import Namespace
 
 import pandas as pd
 
@@ -34,6 +35,16 @@ def test_parse_args_period(monkeypatch):
     assert top_n == 5
     assert min_volume == 1000000.0
     assert period_override == "1y"
+
+
+def test_parse_args_accepts_pro_alias(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["main.py", "--pro"])
+    pro_mode, top_n, min_volume, period_override = main.parse_args()
+
+    assert pro_mode is True
+    assert top_n == 5
+    assert min_volume == 1000000
+    assert period_override is None
 
 
 def test_get_signal_from_df():
@@ -134,3 +145,79 @@ def test_run_mail_prints_error_when_pdf_missing(monkeypatch, capsys):
     assert "MAILVERSAND" in out
     assert "Mail-Fehler: Kein PDF vorhanden" in out
     assert called["value"] is False
+
+
+def test_run_uses_pro_mode_for_analysis(monkeypatch):
+    args = Namespace(
+        dashboard=False,
+        mini_system=False,
+        live=False,
+        pro_mode=True,
+        beginner=False,
+        top=4,
+        period="1mo",
+        min_volume=250000,
+        long=False,
+        skip_realistic_backtest=True,
+        no_pdf=True,
+        mail=False,
+    )
+
+    calls = {}
+
+    monkeypatch.setattr(main, "_parse_cli", lambda: args)
+    monkeypatch.setattr(main, "check_dependencies", lambda: True)
+    monkeypatch.setattr(main, "get_active_profile_name", lambda: "test")
+    monkeypatch.setattr(main, "set_pro_mode", lambda enabled: calls.setdefault("pro_mode", enabled))
+    monkeypatch.setattr(main, "set_beginner_mode", lambda enabled: calls.setdefault("beginner_mode", enabled))
+    monkeypatch.setattr(main, "run_live", lambda: (_ for _ in ()).throw(AssertionError("run_live should not be called")))
+
+    def fake_run_analysis(**kwargs):
+        calls["run_analysis"] = kwargs
+        return {"future_candidates": [], "results": []}
+
+    monkeypatch.setattr(main, "run_analysis", fake_run_analysis)
+    monkeypatch.setattr(main, "build_trading_plan", lambda **kwargs: {})
+    monkeypatch.setattr(main, "print_trading_plan", lambda plan: None)
+    monkeypatch.setattr(main, "simulate_trading_decisions", lambda **kwargs: [])
+    monkeypatch.setattr(main, "print_trading_decisions", lambda decisions: None)
+    monkeypatch.setattr(main, "run_walk_forward", lambda: None)
+    monkeypatch.setattr(main, "print_performance", lambda: None)
+    monkeypatch.setattr(main, "print_runtime", lambda runtime: None)
+    monkeypatch.setattr(main, "print_explanations", lambda: None)
+    monkeypatch.setattr(main, "_run_mail", lambda send_mail, pdf_path: None)
+
+    main.run()
+
+    assert calls["pro_mode"] is True
+    assert calls["beginner_mode"] is False
+    assert calls["run_analysis"]["long_mode"] is True
+    assert calls["run_analysis"]["show_progress"] is True
+
+
+def test_run_live_flag_keeps_live_mode_separate(monkeypatch):
+    args = Namespace(
+        dashboard=False,
+        mini_system=False,
+        live=True,
+        pro_mode=False,
+        beginner=False,
+        top=5,
+        period=None,
+        min_volume=1000000,
+        long=False,
+        skip_realistic_backtest=False,
+        no_pdf=False,
+        mail=False,
+    )
+
+    called = {"live": False}
+
+    monkeypatch.setattr(main, "_parse_cli", lambda: args)
+    monkeypatch.setattr(main, "check_dependencies", lambda: True)
+    monkeypatch.setattr(main, "run_live", lambda: called.__setitem__("live", True))
+    monkeypatch.setattr(main, "run_analysis", lambda **kwargs: (_ for _ in ()).throw(AssertionError("run_analysis should not be called")))
+
+    main.run()
+
+    assert called["live"] is True

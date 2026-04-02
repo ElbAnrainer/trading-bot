@@ -80,12 +80,12 @@ def parse_args():
     parser.add_argument("-p", "--period", default=None)
     parser.add_argument("--top", type=int, default=5)
     parser.add_argument("--min-volume", type=int, default=1000000)
-    parser.add_argument("-l", action="store_true")
+    parser.add_argument("-l", "--pro", dest="pro_mode", action="store_true")
 
     args = parser.parse_args()
 
     return (
-        bool(args.l),
+        bool(args.pro_mode),
         args.top,
         args.min_volume,
         normalize_period_input(args.period),
@@ -107,6 +107,7 @@ def _build_cli_parser():
             "Beispiele:\n"
             "  python main.py\n"
             "  python main.py -p 6mo -t 10\n"
+            "  python main.py --pro\n"
             "  python main.py --live\n"
             "  python main.py --dashboard\n"
             "  python main.py --mini-system\n"
@@ -138,13 +139,15 @@ def _build_cli_parser():
 
     parser.add_argument(
         "-l",
+        "--pro",
+        dest="pro_mode",
         action="store_true",
-        help="Pro-/Live-Modus starten",
+        help="Verbesserte Analyse-Ausgabe mit Fortschritt, Details, Farben und Warnhinweisen",
     )
     parser.add_argument(
         "--live",
         action="store_true",
-        help="Live-Tabelle mit laufend aktualisierten Score-Daten anzeigen",
+        help="Separate Live-Tabelle mit laufend aktualisierten Score-Daten anzeigen",
     )
     parser.add_argument(
         "--dashboard",
@@ -256,11 +259,11 @@ def run():
         )
         return
 
-    if args.live or args.l:
+    if args.live:
         run_live()
         return
 
-    set_pro_mode(args.l)
+    set_pro_mode(args.pro_mode)
     set_beginner_mode(args.beginner)
 
     start = time.time()
@@ -278,8 +281,8 @@ def run():
         period=period,
         top_n=args.top,
         min_volume=args.min_volume,
-        long_mode=args.long,
-        show_progress=False,
+        long_mode=args.long or args.pro_mode,
+        show_progress=args.pro_mode,
     )
 
     plan = build_trading_plan(total_capital=1000, top_n=args.top)
