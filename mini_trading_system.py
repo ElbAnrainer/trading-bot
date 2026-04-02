@@ -88,7 +88,7 @@ def _days_since_exit(state: dict, symbol: str) -> int | None:
     history = state.get("history", [])
     for item in reversed(history):
         if item.get("type") == "SELL" and item.get("symbol") == symbol:
-            ts = item.get("time")
+            ts = item.get("time") or item.get("bar_time")
             if not ts:
                 return None
             try:
@@ -111,7 +111,7 @@ def _trades_this_week(state: dict) -> int:
     for item in state.get("history", []):
         if item.get("type") != "BUY":
             continue
-        ts = item.get("time")
+        ts = item.get("time") or item.get("bar_time")
         if not ts:
             continue
         try:
@@ -231,6 +231,7 @@ def run_mini_trading_system(
                     "proceeds_eur": round(proceeds, 2),
                     "pnl_eur": round(pnl, 2),
                     "reason": check["reason"],
+                    "time": time_str,
                     "bar_time": time_str,
                 },
             )
@@ -339,6 +340,7 @@ def run_mini_trading_system(
                     "shares": shares,
                     "invested_eur": round(invested, 2),
                     "reason": "BUY_SIGNAL_TOP_SELECTION",
+                    "time": sig["time"],
                     "bar_time": sig["time"],
                 },
             )
