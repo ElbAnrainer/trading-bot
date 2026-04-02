@@ -1,3 +1,12 @@
+"""Primary walk-forward engine used by ``main.py``.
+
+This module runs the current portfolio-style walk-forward simulation across
+predefined windows and is the implementation that powers the integrated CLI.
+It intentionally differs from ``walk_forward.py``, which is kept as a legacy
+report-oriented entry point for compatibility with older scripts and workflow
+automation.
+"""
+
 from __future__ import annotations
 
 import copy

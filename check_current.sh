@@ -79,6 +79,7 @@ check_file "strategy.py"
 check_file "report_pdf.py"
 check_file "daily_report.py"
 check_file "walk_forward.py"
+check_file "run_walk_forward.sh"
 check_file "gmail_api_report.py"
 check_file "dependency_check.py"
 check_file "env_loader.py"
@@ -211,7 +212,7 @@ if [ -x ".venv/bin/python" ]; then
     print_fail "Daily Report fehlgeschlagen"
   fi
 
-  PYTHONPATH=. .venv/bin/python walk_forward.py
+  bash ./run_walk_forward.sh
   if [ $? -eq 0 ]; then
     print_ok "Walk-Forward erfolgreich erzeugt"
   else

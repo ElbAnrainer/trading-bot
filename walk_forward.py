@@ -1,3 +1,11 @@
+"""Legacy report-oriented walk-forward command.
+
+This module is intentionally kept for compatibility with existing scripts,
+checks and GitHub workflow automation that expect ``python walk_forward.py``.
+Unlike ``walkforward.py`` it focuses on generating summary artifacts in
+``reports/`` and is not the walk-forward implementation used by ``main.py``.
+"""
+
 import csv
 import json
 from datetime import datetime

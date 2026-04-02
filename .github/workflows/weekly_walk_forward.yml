@@ -42,10 +42,8 @@ jobs:
           EOF
 
       - name: Walk-Forward-Report erzeugen
-        env:
-          PYTHONPATH: .
         run: |
-          python walk_forward.py
+          bash ./run_walk_forward.sh
 
       - name: Weekly Mail versenden
         env:
