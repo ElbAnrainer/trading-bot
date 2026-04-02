@@ -52,6 +52,7 @@ trading_journal.csv
 .coverage.*
 htmlcov/
 .pytest_cache/
+tests/reports/
 
 # =========================
 # Jupyter (falls du später nutzt)
