@@ -131,14 +131,17 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
     ranking_rows = []
     for row in perf.get("ranking", []):
         bonus_text = f"{float(row.get('bonus', 0.0)):+.2f}" if "bonus" in row else "-"
+        hit_rate_text = f"{float(row.get('hit_rate', 0.0)):.2f}%"
+        avg_pnl_text = f"{float(row.get('avg_pnl', 0.0)):,.2f}"
+        learned_score_text = f"{float(row.get('learned_score', 0.0)):.2f}"
         ranking_rows.append(
             "<tr>"
             f"<td>{_html_escape(row.get('symbol', '-'))}</td>"
             f"<td style='text-align:right'>{_html_escape(bonus_text)}</td>"
-            f"<td style='text-align:right'>{_html_escape(f'{float(row.get('hit_rate', 0.0)):.2f}%')}</td>"
-            f"<td style='text-align:right'>{_html_escape(f'{float(row.get('avg_pnl', 0.0)):,.2f}')}</td>"
+            f"<td style='text-align:right'>{_html_escape(hit_rate_text)}</td>"
+            f"<td style='text-align:right'>{_html_escape(avg_pnl_text)}</td>"
             f"<td style='text-align:right'>{_html_escape(row.get('trades', 0))}</td>"
-            f"<td style='text-align:right'>{_html_escape(f'{float(row.get('learned_score', 0.0)):.2f}')}</td>"
+            f"<td style='text-align:right'>{_html_escape(learned_score_text)}</td>"
             "</tr>"
         )
 
@@ -147,12 +150,15 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
 
     portfolio_rows = []
     for row in perf.get("portfolio_plan", []):
+        weight_text = f"{float(row.get('weight', 0.0)):.2f}"
+        capital_text = f"{float(row.get('capital', 0.0)):,.2f} EUR"
+        learned_score_text = f"{float(row.get('learned_score', 0.0)):.2f}"
         portfolio_rows.append(
             "<tr>"
             f"<td>{_html_escape(row.get('symbol', '-'))}</td>"
-            f"<td style='text-align:right'>{_html_escape(f'{float(row.get('weight', 0.0)):.2f}')}</td>"
-            f"<td style='text-align:right'>{_html_escape(f'{float(row.get('capital', 0.0)):,.2f} EUR')}</td>"
-            f"<td style='text-align:right'>{_html_escape(f'{float(row.get('learned_score', 0.0)):.2f}')}</td>"
+            f"<td style='text-align:right'>{_html_escape(weight_text)}</td>"
+            f"<td style='text-align:right'>{_html_escape(capital_text)}</td>"
+            f"<td style='text-align:right'>{_html_escape(learned_score_text)}</td>"
             "</tr>"
         )
 
