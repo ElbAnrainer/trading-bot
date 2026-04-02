@@ -1,9 +1,16 @@
-import os
 import importlib
 from pathlib import Path
 
+import pytest
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+REPORTS_DIR = PROJECT_ROOT / "reports"
+
+
+@pytest.fixture(autouse=True)
+def _run_from_project_root(monkeypatch):
+    monkeypatch.chdir(PROJECT_ROOT)
 
 
 def test_required_modules_importable():
@@ -44,20 +51,24 @@ def test_required_files_exist():
 
 
 def test_reports_directory_exists_or_can_be_created():
-    os.makedirs("reports", exist_ok=True)
-    assert os.path.isdir("reports")
+    REPORTS_DIR.mkdir(exist_ok=True)
+    assert REPORTS_DIR.is_dir()
 
 
 def test_dashboard_generation_runs():
     from dashboard import build_dashboard
 
-    os.makedirs("reports", exist_ok=True)
-    build_dashboard()
-    assert os.path.exists("reports/dashboard.html") or True
+    result = build_dashboard()
+
+    assert isinstance(result, dict)
+    assert (REPORTS_DIR / "dashboard_latest.json").exists()
+    assert (REPORTS_DIR / "dashboard_latest.html").exists()
 
 
 def test_performance_module_runs():
     from performance import analyze_performance
 
     result = analyze_performance()
-    assert result is None or isinstance(result, dict)
+    assert isinstance(result, dict)
+    assert "ranking" in result
+    assert "portfolio" in result
