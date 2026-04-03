@@ -121,10 +121,19 @@ def test_run_mini_trading_system_records_buy_event_with_time(monkeypatch):
     monkeypatch.setattr(
         mts,
         "build_trading_plan",
-        lambda total_capital=1000.0, top_n=1: [{"symbol": "AAA", "learned_score": 25.0, "isin": "US0000000001", "wkn": "AAA111"}],
+        lambda total_capital=1000.0, top_n=1, profile_name=None: [
+            {"symbol": "AAA", "learned_score": 25.0, "isin": "US0000000001", "wkn": "AAA111"}
+        ],
     )
     monkeypatch.setattr(mts, "_fetch_all", lambda symbols, period, interval: {"AAA": market_df})
-    monkeypatch.setattr(mts, "may_open_new_positions", lambda current_equity, peak_equity=None: (True, SimpleNamespace(trading_blocked=False)))
+    monkeypatch.setattr(
+        mts,
+        "may_open_new_positions",
+        lambda current_equity, peak_equity=None, profile_name=None: (
+            True,
+            SimpleNamespace(trading_blocked=False),
+        ),
+    )
     monkeypatch.setattr(mts, "latest_signal", lambda df: {"signal": "BUY", "price": 100.0, "time": "2026-04-02T10:00:00"})
     monkeypatch.setattr(mts, "adaptive_stop_loss_pct", lambda *args: 0.08)
     monkeypatch.setattr(mts, "adaptive_trailing_stop_pct", lambda *args: 0.10)
@@ -175,9 +184,16 @@ def test_run_mini_trading_system_records_sell_event_with_time(monkeypatch):
     monkeypatch.setattr(mts, "get_active_profile_name", lambda: "test-profile")
     monkeypatch.setattr(mts, "load_portfolio_state", lambda initial_cash=1000.0: state)
     monkeypatch.setattr(mts, "analyze_performance", lambda: {"ranking": []})
-    monkeypatch.setattr(mts, "build_trading_plan", lambda total_capital=1000.0, top_n=1: [])
+    monkeypatch.setattr(mts, "build_trading_plan", lambda total_capital=1000.0, top_n=1, profile_name=None: [])
     monkeypatch.setattr(mts, "_fetch_all", lambda symbols, period, interval: {"AAA": market_df})
-    monkeypatch.setattr(mts, "may_open_new_positions", lambda current_equity, peak_equity=None: (True, SimpleNamespace(trading_blocked=False)))
+    monkeypatch.setattr(
+        mts,
+        "may_open_new_positions",
+        lambda current_equity, peak_equity=None, profile_name=None: (
+            True,
+            SimpleNamespace(trading_blocked=False),
+        ),
+    )
     monkeypatch.setattr(
         mts,
         "evaluate_open_position",
@@ -227,9 +243,16 @@ def test_run_mini_trading_system_keeps_position_when_sell_signal_too_early(monke
     monkeypatch.setattr(mts, "get_active_profile_name", lambda: "test-profile")
     monkeypatch.setattr(mts, "load_portfolio_state", lambda initial_cash=1000.0: state)
     monkeypatch.setattr(mts, "analyze_performance", lambda: {"ranking": []})
-    monkeypatch.setattr(mts, "build_trading_plan", lambda total_capital=1000.0, top_n=1: [])
+    monkeypatch.setattr(mts, "build_trading_plan", lambda total_capital=1000.0, top_n=1, profile_name=None: [])
     monkeypatch.setattr(mts, "_fetch_all", lambda symbols, period, interval: {"AAA": market_df})
-    monkeypatch.setattr(mts, "may_open_new_positions", lambda current_equity, peak_equity=None: (True, SimpleNamespace(trading_blocked=False)))
+    monkeypatch.setattr(
+        mts,
+        "may_open_new_positions",
+        lambda current_equity, peak_equity=None, profile_name=None: (
+            True,
+            SimpleNamespace(trading_blocked=False),
+        ),
+    )
     monkeypatch.setattr(
         mts,
         "evaluate_open_position",

@@ -162,7 +162,8 @@ def run_mini_trading_system(
     interval: str = DEFAULT_INTERVAL,
     profile_name: str | None = None,
 ) -> dict[str, Any]:
-    cfg = get_trading_config(profile_name)
+    resolved_profile = profile_name or get_active_profile_name()
+    cfg = get_trading_config(resolved_profile)
 
     total_capital = float(total_capital if total_capital is not None else cfg["initial_capital"])
     top_n = int(top_n if top_n is not None else cfg["max_positions"])
@@ -182,7 +183,11 @@ def run_mini_trading_system(
 
     state = load_portfolio_state(initial_cash=total_capital)
     perf = analyze_performance()
-    plan = build_trading_plan(total_capital=total_capital, top_n=top_n)
+    plan = build_trading_plan(
+        total_capital=total_capital,
+        top_n=top_n,
+        profile_name=resolved_profile,
+    )
 
     plan_lookup = _planned_symbol_lookup(plan)
     selected_symbols = list(plan_lookup.keys())
@@ -193,6 +198,7 @@ def run_mini_trading_system(
     can_trade, dd_state = may_open_new_positions(
         current_equity=current_equity,
         peak_equity=state.get("peak_equity_eur"),
+        profile_name=resolved_profile,
     )
     update_equity(state, current_equity)
 

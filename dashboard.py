@@ -33,6 +33,7 @@ def build_documentation_section() -> dict[str, Any]:
             "risk_per_trade": cfg.get("risk_per_trade_pct", 0.0),
             "max_portfolio_risk": cfg.get("max_portfolio_risk_pct", 0.0),
             "max_positions": cfg.get("max_positions", 0),
+            "max_drawdown_pct": cfg.get("max_drawdown_pct", 0.0),
             "stop_loss_pct": cfg.get("stop_loss_pct", 0.0),
             "trailing_stop_pct": cfg.get("trailing_stop_pct", 0.0),
         },
@@ -54,10 +55,10 @@ def build_dashboard_data(initial_cash: float = 1000.0) -> dict[str, Any]:
     perf = analyze_performance()
     state = load_portfolio_state(initial_cash=initial_cash)
     summary = portfolio_summary(state)
-    risk = risk_summary()
 
     active_profile = get_active_profile_name()
     profile_cfg = get_trading_config(active_profile)
+    risk = risk_summary(active_profile)
 
     ranking = perf.get("ranking", [])
     portfolio = perf.get("portfolio", [])

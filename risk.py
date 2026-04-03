@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from config import get_trading_config
 
 MAX_POSITION_PCT = 0.20       # max. 20% Kapital pro Aktie
 STOP_LOSS_PCT = 0.05          # 5% Stop-Loss
@@ -16,25 +17,66 @@ class DrawdownState:
     trading_blocked: bool
 
 
-def max_position_eur(total_capital: float) -> float:
-    return float(total_capital) * MAX_POSITION_PCT
+def _risk_config(profile_name: str | None = None) -> dict[str, float]:
+    cfg = {
+        "max_position_pct": MAX_POSITION_PCT,
+        "stop_loss_pct": STOP_LOSS_PCT,
+        "trailing_stop_pct": TRAILING_STOP_PCT,
+        "max_drawdown_pct": MAX_DRAWDOWN_PCT,
+        "min_position_eur": MIN_POSITION_EUR,
+    }
+    profile_cfg = get_trading_config(profile_name)
+
+    direct_keys = (
+        "max_position_pct",
+        "stop_loss_pct",
+        "trailing_stop_pct",
+        "max_drawdown_pct",
+    )
+    for key in direct_keys:
+        if key in profile_cfg:
+            cfg[key] = float(profile_cfg[key])
+
+    if "min_trade_eur" in profile_cfg:
+        cfg["min_position_eur"] = float(profile_cfg["min_trade_eur"])
+    elif "min_position_eur" in profile_cfg:
+        cfg["min_position_eur"] = float(profile_cfg["min_position_eur"])
+
+    return cfg
 
 
-def clamp_position_capital(capital: float, total_capital: float) -> float:
-    capped = min(float(capital), max_position_eur(total_capital))
+def max_position_eur(total_capital: float, profile_name: str | None = None) -> float:
+    cfg = _risk_config(profile_name)
+    return float(total_capital) * float(cfg["max_position_pct"])
+
+
+def min_position_eur(profile_name: str | None = None) -> float:
+    cfg = _risk_config(profile_name)
+    return float(cfg["min_position_eur"])
+
+
+def clamp_position_capital(capital: float, total_capital: float, profile_name: str | None = None) -> float:
+    capped = min(float(capital), max_position_eur(total_capital, profile_name=profile_name))
     return max(0.0, capped)
 
 
-def stop_loss_price(entry_price: float) -> float:
-    return float(entry_price) * (1.0 - STOP_LOSS_PCT)
+def stop_loss_price(entry_price: float, profile_name: str | None = None) -> float:
+    cfg = _risk_config(profile_name)
+    return float(entry_price) * (1.0 - float(cfg["stop_loss_pct"]))
 
 
-def trailing_stop_price(highest_price: float) -> float:
-    return float(highest_price) * (1.0 - TRAILING_STOP_PCT)
+def trailing_stop_price(highest_price: float, profile_name: str | None = None) -> float:
+    cfg = _risk_config(profile_name)
+    return float(highest_price) * (1.0 - float(cfg["trailing_stop_pct"]))
 
 
-def compute_drawdown_state(current_equity: float, peak_equity: float | None = None) -> DrawdownState:
+def compute_drawdown_state(
+    current_equity: float,
+    peak_equity: float | None = None,
+    profile_name: str | None = None,
+) -> DrawdownState:
     current_equity = float(current_equity)
+    cfg = _risk_config(profile_name)
 
     if peak_equity is None:
         peak_equity = current_equity
@@ -50,20 +92,22 @@ def compute_drawdown_state(current_equity: float, peak_equity: float | None = No
         peak_equity=peak_equity,
         current_equity=current_equity,
         drawdown_pct=drawdown_pct,
-        trading_blocked=drawdown_pct >= MAX_DRAWDOWN_PCT,
+        trading_blocked=drawdown_pct >= float(cfg["max_drawdown_pct"]),
     )
 
 
-def may_open_new_positions(current_equity: float, peak_equity: float | None = None) -> tuple[bool, DrawdownState]:
-    state = compute_drawdown_state(current_equity=current_equity, peak_equity=peak_equity)
+def may_open_new_positions(
+    current_equity: float,
+    peak_equity: float | None = None,
+    profile_name: str | None = None,
+) -> tuple[bool, DrawdownState]:
+    state = compute_drawdown_state(
+        current_equity=current_equity,
+        peak_equity=peak_equity,
+        profile_name=profile_name,
+    )
     return (not state.trading_blocked), state
 
 
-def risk_summary() -> dict:
-    return {
-        "max_position_pct": MAX_POSITION_PCT,
-        "stop_loss_pct": STOP_LOSS_PCT,
-        "trailing_stop_pct": TRAILING_STOP_PCT,
-        "max_drawdown_pct": MAX_DRAWDOWN_PCT,
-        "min_position_eur": MIN_POSITION_EUR,
-    }
+def risk_summary(profile_name: str | None = None) -> dict:
+    return _risk_config(profile_name)

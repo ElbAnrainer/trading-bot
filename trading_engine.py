@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from config import get_trading_config
 from performance import analyze_performance
 from risk import (
-    MIN_POSITION_EUR,
     clamp_position_capital,
+    min_position_eur,
     may_open_new_positions,
     risk_summary,
+    stop_loss_price,
 )
 
 
@@ -23,11 +25,16 @@ def _score_weighted_selection(ranking: list[dict], top_n: int) -> list[dict]:
     return ranking[:top_n]
 
 
-def _allocate_capped_capital(selected: list[dict], total_capital: float) -> list[dict]:
+def _allocate_capped_capital(
+    selected: list[dict],
+    total_capital: float,
+    profile_name: str | None = None,
+) -> list[dict]:
     if not selected:
         return []
 
     total_capital = float(total_capital)
+    risk = risk_summary(profile_name)
     scores = [_positive_score(item.get("learned_score", 0.0)) for item in selected]
     score_sum = sum(scores)
 
@@ -35,7 +42,7 @@ def _allocate_capped_capital(selected: list[dict], total_capital: float) -> list
         base = total_capital / len(selected)
         out = []
         for item in selected:
-            capital = clamp_position_capital(base, total_capital)
+            capital = clamp_position_capital(base, total_capital, profile_name=profile_name)
             out.append(
                 {
                     **item,
@@ -48,7 +55,7 @@ def _allocate_capped_capital(selected: list[dict], total_capital: float) -> list
     remaining_capital = total_capital
     remaining_idx = set(range(len(selected)))
     allocations = [0.0 for _ in selected]
-    capped_limit = total_capital * 0.20
+    capped_limit = total_capital * float(risk["max_position_pct"])
 
     # Iterative capped allocation
     while remaining_idx and remaining_capital > 0:
@@ -81,8 +88,8 @@ def _allocate_capped_capital(selected: list[dict], total_capital: float) -> list
 
     out = []
     for item, capital in zip(selected, allocations):
-        capital = clamp_position_capital(capital, total_capital)
-        if capital < MIN_POSITION_EUR:
+        capital = clamp_position_capital(capital, total_capital, profile_name=profile_name)
+        if capital < min_position_eur(profile_name):
             continue
         out.append(
             {
@@ -95,15 +102,29 @@ def _allocate_capped_capital(selected: list[dict], total_capital: float) -> list
     return out
 
 
-def build_trading_plan(total_capital: float = 1000.0, top_n: int = 5) -> list[dict]:
+def build_trading_plan(
+    total_capital: float = 1000.0,
+    top_n: int | None = 5,
+    profile_name: str | None = None,
+) -> list[dict]:
     stats = analyze_performance()
     ranking = stats.get("ranking", [])
+    cfg = get_trading_config(profile_name)
 
     if not ranking:
         return []
 
-    selected = _score_weighted_selection(ranking, top_n=top_n)
-    return _allocate_capped_capital(selected, total_capital=total_capital)
+    max_positions = max(0, int(cfg.get("max_positions", 0)))
+    if top_n is None:
+        effective_top_n = max_positions
+    else:
+        effective_top_n = min(max(0, int(top_n)), max_positions)
+
+    if effective_top_n <= 0:
+        return []
+
+    selected = _score_weighted_selection(ranking, top_n=effective_top_n)
+    return _allocate_capped_capital(selected, total_capital=total_capital, profile_name=profile_name)
 
 
 def _learned_score_lookup() -> dict[str, float]:
@@ -119,6 +140,8 @@ def simulate_trading_decisions(
     total_capital: float = 1000.0,
     current_positions: dict[str, dict] | None = None,
     peak_equity: float | None = None,
+    top_n: int | None = None,
+    profile_name: str | None = None,
 ) -> dict[str, Any]:
     """
     Erwartet analysis_result aus run_analysis().
@@ -132,10 +155,15 @@ def simulate_trading_decisions(
     can_trade, dd_state = may_open_new_positions(
         current_equity=current_equity,
         peak_equity=peak_equity,
+        profile_name=profile_name,
     )
 
     learned_scores = _learned_score_lookup()
-    desired_plan = build_trading_plan(total_capital=total_capital, top_n=5)
+    desired_plan = build_trading_plan(
+        total_capital=total_capital,
+        top_n=top_n,
+        profile_name=profile_name,
+    )
     desired_symbols = {item["symbol"] for item in desired_plan}
 
     candidates = analysis_result.get("future_candidates", [])
@@ -151,7 +179,10 @@ def simulate_trading_decisions(
 
         stop_loss_triggered = False
         if entry_price > 0 and current_price > 0:
-            stop_loss_triggered = current_price <= entry_price * (1.0 - 0.05)
+            stop_loss_triggered = current_price <= stop_loss_price(
+                entry_price,
+                profile_name=profile_name,
+            )
 
         if symbol not in desired_symbols or signal == "SELL" or stop_loss_triggered:
             reason = "SELL_SIGNAL"
@@ -202,7 +233,7 @@ def simulate_trading_decisions(
             "drawdown_pct": dd_state.drawdown_pct,
             "trading_blocked": dd_state.trading_blocked,
         },
-        "risk": risk_summary(),
+        "risk": risk_summary(profile_name),
     }
 
 

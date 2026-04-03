@@ -291,7 +291,11 @@ def run():
         show_progress=args.pro_mode,
     )
 
-    plan = build_trading_plan(total_capital=1000, top_n=args.top)
+    plan = build_trading_plan(
+        total_capital=1000,
+        top_n=args.top,
+        profile_name=active_profile,
+    )
     print_trading_plan(plan)
 
     current_positions = {}
@@ -301,6 +305,8 @@ def run():
         total_capital=1000.0,
         current_positions=current_positions,
         peak_equity=None,
+        top_n=args.top,
+        profile_name=active_profile,
     )
     print_trading_decisions(decisions)
 
