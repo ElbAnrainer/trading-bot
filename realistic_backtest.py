@@ -14,13 +14,19 @@ from advanced_risk import (
     calculate_position_budget_from_risk,
     portfolio_risk_used_pct,
 )
-from config import get_active_profile_name, get_trading_config
+from config import (
+    REALISTIC_BACKTEST_JSON as DEFAULT_LATEST_JSON,
+    REPORTS_DIR as DEFAULT_REPORTS_DIR,
+    ensure_reports_dir,
+    get_active_profile_name,
+    get_trading_config,
+)
 from performance import analyze_performance
 from strategy import add_signals
 
 
-REPORTS_DIR = "reports"
-LATEST_JSON = os.path.join(REPORTS_DIR, "realistic_backtest_latest.json")
+REPORTS_DIR = DEFAULT_REPORTS_DIR
+LATEST_JSON = DEFAULT_LATEST_JSON
 
 
 @dataclass
@@ -38,7 +44,7 @@ class OpenPosition:
 
 
 def _ensure_reports_dir() -> None:
-    os.makedirs(REPORTS_DIR, exist_ok=True)
+    ensure_reports_dir()
 
 
 def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:

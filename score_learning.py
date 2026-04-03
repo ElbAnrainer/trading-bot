@@ -4,13 +4,15 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
+from config import LEARNING_MODEL_JSON, LEGACY_TRADING_JOURNAL_CSV, ROOT_TRADING_JOURNAL_CSV, TRADING_JOURNAL_CSV
 
 JOURNAL_FILE_CANDIDATES = [
-    Path("reports/trading_journal.csv"),
-    Path("trading_journal.csv"),
+    Path(TRADING_JOURNAL_CSV),
+    Path(LEGACY_TRADING_JOURNAL_CSV),
+    Path(ROOT_TRADING_JOURNAL_CSV),
 ]
 
-MODEL_FILE = Path(".cache/learned_score_model.json")
+MODEL_FILE = Path(LEARNING_MODEL_JSON)
 
 
 def _find_journal_file():

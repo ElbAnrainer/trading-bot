@@ -2,25 +2,34 @@ import json
 import os
 from datetime import datetime
 
+from config import PORTFOLIO_STATE_JSON, LEGACY_PORTFOLIO_STATE_JSON, ensure_reports_dir
 
-FILE = "reports/portfolio_state.json"
+FILE = PORTFOLIO_STATE_JSON
 
 
 def _ensure():
-    os.makedirs("reports", exist_ok=True)
+    ensure_reports_dir()
+
+
+def _load_path():
+    for path in (FILE, LEGACY_PORTFOLIO_STATE_JSON):
+        if path and os.path.exists(path):
+            return path
+    return FILE
 
 
 def load_portfolio_state(initial_cash=1000.0):
     _ensure()
 
-    if not os.path.exists(FILE):
+    path = _load_path()
+    if not os.path.exists(path):
         return {
             "cash": initial_cash,
             "positions": {},
             "peak": initial_cash,
         }
 
-    with open(FILE, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -28,7 +37,7 @@ def save_portfolio_state(state):
     _ensure()
     state["updated"] = datetime.now().isoformat()
 
-    with open(FILE, "w") as f:
+    with open(FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
 

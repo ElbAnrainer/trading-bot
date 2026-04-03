@@ -7,19 +7,28 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
+from config import (
+    DAILY_REPORT_CSV,
+    DAILY_REPORT_HTML,
+    DAILY_REPORT_PDF,
+    DAILY_REPORT_TXT,
+    DAILY_REPORT_XML,
+    REPORTS_DIR as DEFAULT_REPORTS_DIR,
+    ensure_reports_dir,
+)
 from performance import analyze_performance
 
 
-REPORTS_DIR = "reports"
-TXT_PATH = os.path.join(REPORTS_DIR, "daily_report_latest.txt")
-HTML_PATH = os.path.join(REPORTS_DIR, "daily_report_latest.html")
-CSV_PATH = os.path.join(REPORTS_DIR, "daily_report_latest.csv")
-XML_PATH = os.path.join(REPORTS_DIR, "daily_report_latest.xml")
-PDF_PATH = os.path.join(REPORTS_DIR, "daily_report_latest.pdf")
+REPORTS_DIR = DEFAULT_REPORTS_DIR
+TXT_PATH = DAILY_REPORT_TXT
+HTML_PATH = DAILY_REPORT_HTML
+CSV_PATH = DAILY_REPORT_CSV
+XML_PATH = DAILY_REPORT_XML
+PDF_PATH = DAILY_REPORT_PDF
 
 
 def _ensure_reports_dir():
-    os.makedirs(REPORTS_DIR, exist_ok=True)
+    ensure_reports_dir()
 
 
 def _safe_get(stats, key, default=0):

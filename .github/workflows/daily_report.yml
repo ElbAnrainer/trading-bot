@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 20
     env:
       MPLCONFIGDIR: /tmp/mpl-trading-bot
+      TRADING_BOT_DATA_DIR: ${{ github.workspace }}
 
     steps:
       - name: Repository auschecken

@@ -2,9 +2,8 @@ import json
 import os
 from datetime import datetime
 
-
-STATUS_JSON = os.path.join("reports", "status", "check_status_latest.json")
-OUTPUT_HTML = os.path.join("reports", "status", "monitor_latest.html")
+from config import LOGS_DIR, MONITOR_HTML, STATUS_JSON
+OUTPUT_HTML = MONITOR_HTML
 
 
 def _load_status():
@@ -140,7 +139,7 @@ def build_monitor_report():
             <h2>Dateien</h2>
             <p>Aktueller Status als JSON: <code>{STATUS_JSON}</code></p>
             <p>Aktuelles Log: <code>{status.get("log_file", "")}</code></p>
-            <p class="muted">Tipp: Öffne zusätzlich <code>reports/logs/check_current_latest.log</code> für Details.</p>
+            <p class="muted">Tipp: Öffne zusätzlich <code>{os.path.join(LOGS_DIR, "check_current_latest.log")}</code> für Details.</p>
         </div>
     </div>
 </body>

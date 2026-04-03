@@ -1,7 +1,7 @@
 import json
 import os
 
-from config import STATE_FILE, BROKER_FILE
+from config import BROKER_FILE, LEGACY_BROKER_FILE, LEGACY_STATE_FILE, STATE_FILE
 
 
 def load_json(file, default):
@@ -22,7 +22,8 @@ def save_json(file, data):
 
 
 def load_state():
-    return load_json(STATE_FILE, {"last_signal": 0})
+    path = STATE_FILE if os.path.exists(STATE_FILE) else LEGACY_STATE_FILE
+    return load_json(path, {"last_signal": 0})
 
 
 def save_state(data):
@@ -30,7 +31,8 @@ def save_state(data):
 
 
 def load_broker():
-    return load_json(BROKER_FILE, {"cash": 10000, "position": 0})
+    path = BROKER_FILE if os.path.exists(BROKER_FILE) else LEGACY_BROKER_FILE
+    return load_json(path, {"cash": 10000, "position": 0})
 
 
 def save_broker(data):

@@ -3,7 +3,8 @@
 This module is intentionally kept for compatibility with existing scripts,
 checks and GitHub workflow automation that expect ``python walk_forward.py``.
 Unlike ``walkforward.py`` it focuses on generating summary artifacts in
-``reports/`` and is not the walk-forward implementation used by ``main.py``.
+the configured reports directory and is not the walk-forward implementation
+used by ``main.py``.
 """
 
 import csv
@@ -13,12 +14,12 @@ from pathlib import Path
 
 from analysis_engine import run_analysis
 from cli import choose_interval
-from config import BENCHMARK_SYMBOL, DEFAULT_MIN_VOLUME, DEFAULT_TOP_N
+from config import BENCHMARK_SYMBOL, DEFAULT_MIN_VOLUME, DEFAULT_TOP_N, REPORTS_DIR as DEFAULT_REPORTS_DIR
 from data_loader import fallback_rate_to_eur, latest_rate_to_eur, load_ticker_metadata
 from market_data_cache import load_benchmark_cached
 
 
-REPORTS_DIR = Path("reports")
+REPORTS_DIR = Path(DEFAULT_REPORTS_DIR)
 WALK_FORWARD_DIR = REPORTS_DIR / "walk_forward"
 
 DEFAULT_PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "3y"]

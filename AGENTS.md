@@ -32,7 +32,7 @@ Wichtige Einstiegspunkte und Kernmodule:
 - `report_pdf.py`, `daily_report.py`, `gmail_api_report.py` -> Reporting
 - `portfolio_state.py` und `state.py` -> persistenter Zustand
 - `tests/` -> `pytest`-Suite
-- `reports/` -> generierte Ausgaben und persistente Laufzeitdaten
+- `reports/` -> CI-/Override-Ziel fuer generierte Ausgaben
 - `docs/` -> Dokumentation, getrennt nach `manual/` und `refactor/`
 
 Nicht von Verzeichnissen wie `/data`, `/strategy` oder `/execution`
@@ -75,10 +75,12 @@ Berechtigungsprobleme zu vermeiden.
   Diesen Stil bei neuen Ausgaben beibehalten.
 - `.env` wird ueber `env_loader.py` geladen. Keine Secrets, OAuth-Dateien oder
   Tokens committen.
+- Laufzeitpfade immer ueber `config.py` und `TRADING_BOT_DATA_DIR` behandeln,
+  nicht ueber hart verdrahtete Repo-Root-Pfade.
 - Mailversand existiert (`gmail_api_report.py`, `--mail`, `.env`-Werte), soll
   aber nicht in Tests oder Smoke-Checks ausgeloest werden.
-- Generierte Dateien in `reports/` nicht manuell pflegen, wenn stattdessen die
-  erzeugende Python-Quelle angepasst werden kann.
+- Generierte Dateien im konfigurierten `REPORTS_DIR` nicht manuell pflegen,
+  wenn stattdessen die erzeugende Python-Quelle angepasst werden kann.
 - Persistente Formate fuer Zustandsdateien moeglichst stabil halten, es sei
   denn, eine bewusste Migration ist Teil der Aenderung.
 - Bestehende Werte aus `config.py` und den Trading-Profilen nutzen, statt neue
@@ -116,8 +118,9 @@ dann die Auswirkungen auf Folgendes mitpruefen:
 
 ## Zustand und Ausgaben
 
-Dieses Repository ist nicht zustandslos. Es nutzt persistente Dateien in
-`reports/`.
+Dieses Repository ist nicht zustandslos. Es nutzt persistente Dateien im
+konfigurierten Datenordner aus `config.py`. Standardmaessig liegt dieser
+ausserhalb des Repos; in CI kann er bewusst auf das Repo zeigen.
 
 Wichtige Beispiele:
 
@@ -175,5 +178,5 @@ Bei Reviews oder Aenderungsvorschlaegen:
 - Fuer Codeaenderungen mindestens die betroffenen Tests ausfuehren, idealerweise
   die komplette Suite.
 - Bei Aenderungen an Reports oder CLIs einen kurzen Smoke-Test ausfuehren.
-- Keine unbeabsichtigten Artefakte oder Geheimnisse in `reports/` oder im Repo
+- Keine unbeabsichtigten Artefakte oder Geheimnisse im Datenordner oder im Repo
   hinterlassen.

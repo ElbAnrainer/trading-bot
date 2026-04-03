@@ -3,9 +3,11 @@ from pathlib import Path
 
 import pytest
 
+from config import REPORTS_DIR as CONFIG_REPORTS_DIR
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-REPORTS_DIR = PROJECT_ROOT / "reports"
+REPORTS_DIR = Path(CONFIG_REPORTS_DIR)
 
 
 @pytest.fixture(autouse=True)
@@ -51,7 +53,7 @@ def test_required_files_exist():
 
 
 def test_reports_directory_exists_or_can_be_created():
-    REPORTS_DIR.mkdir(exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     assert REPORTS_DIR.is_dir()
 
 

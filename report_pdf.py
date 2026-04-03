@@ -15,23 +15,36 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from config import get_active_profile_name, get_trading_config
+from config import (
+    CHART_PATH as DEFAULT_CHART_PATH,
+    LEGACY_REALISTIC_BACKTEST_JSON,
+    LEGACY_TRADING_JOURNAL_CSV,
+    REALISTIC_BACKTEST_JSON as DEFAULT_REALISTIC_BACKTEST_JSON,
+    REPORTS_DIR as DEFAULT_REPORTS_DIR,
+    ROOT_TRADING_JOURNAL_CSV,
+    TRADING_JOURNAL_CSV,
+    TRADING_REPORT_PDF as DEFAULT_LATEST_PDF_PATH,
+    ensure_reports_dir,
+    get_active_profile_name,
+    get_trading_config,
+)
 
 
-REPORTS_DIR = "reports"
+REPORTS_DIR = DEFAULT_REPORTS_DIR
 JOURNAL_CANDIDATES = [
-    os.path.join(REPORTS_DIR, "trading_journal.csv"),
-    "trading_journal.csv",
+    TRADING_JOURNAL_CSV,
+    LEGACY_TRADING_JOURNAL_CSV,
+    ROOT_TRADING_JOURNAL_CSV,
 ]
-REALISTIC_BACKTEST_JSON = os.path.join(REPORTS_DIR, "realistic_backtest_latest.json")
+REALISTIC_BACKTEST_JSON = DEFAULT_REALISTIC_BACKTEST_JSON
 
-CHART_PATH = os.path.join(REPORTS_DIR, "equity_curve.png")
+CHART_PATH = DEFAULT_CHART_PATH
 REALISTIC_CHART_PATH = os.path.join(REPORTS_DIR, "equity_curve_realistic.png")
-LATEST_PDF_PATH = os.path.join(REPORTS_DIR, "trading_report_latest.pdf")
+LATEST_PDF_PATH = DEFAULT_LATEST_PDF_PATH
 
 
 def _ensure_reports_dir() -> None:
-    os.makedirs(REPORTS_DIR, exist_ok=True)
+    ensure_reports_dir()
 
 
 def _build_output_path() -> str:
@@ -89,14 +102,17 @@ def load_trades() -> list[dict[str, Any]]:
 
 
 def load_realistic_backtest() -> dict[str, Any] | None:
-    if not os.path.exists(REALISTIC_BACKTEST_JSON):
-        return None
+    for path in (REALISTIC_BACKTEST_JSON, LEGACY_REALISTIC_BACKTEST_JSON):
+        if not os.path.exists(path):
+            continue
 
-    try:
-        with open(REALISTIC_BACKTEST_JSON, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            continue
+
+    return None
 
 
 def calculate_metrics(trades: list[dict[str, Any]], initial_capital: float = 10_000.0) -> dict[str, Any]:

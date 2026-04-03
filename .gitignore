@@ -99,6 +99,7 @@ refactor_artifacts_bundle.zip
 
 # Cache / Daten
 .cache/
+cache/
 
 # ML / Modelle
 *.pkl

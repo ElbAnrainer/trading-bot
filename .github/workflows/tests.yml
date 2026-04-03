@@ -23,6 +23,7 @@ jobs:
     env:
       MPLCONFIGDIR: /tmp/mpl-trading-bot
       PYTHONDONTWRITEBYTECODE: "1"
+      TRADING_BOT_DATA_DIR: ${{ github.workspace }}
 
     steps:
       - name: Repo auschecken

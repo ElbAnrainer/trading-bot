@@ -108,11 +108,8 @@ def test_symbols_for_realistic_backtest_falls_back_to_results():
 
 def test_run_mail_sends_pdf_and_html_attachment(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    reports_dir = tmp_path / "reports"
-    reports_dir.mkdir()
-
     pdf_path = tmp_path / "report.pdf"
-    html_path = reports_dir / "daily_report_latest.html"
+    html_path = tmp_path / "daily_report_latest.html"
     pdf_path.write_text("pdf", encoding="utf-8")
     html_path.write_text("<html></html>", encoding="utf-8")
 
@@ -122,12 +119,13 @@ def test_run_mail_sends_pdf_and_html_attachment(monkeypatch, tmp_path):
         sent["attachments"] = attachment_paths
 
     monkeypatch.setattr(main, "send_report_email", fake_send_report_email)
+    monkeypatch.setattr(main, "DAILY_REPORT_HTML", str(html_path))
 
     main._run_mail(True, str(pdf_path))
 
     assert sent["attachments"] == [
         str(pdf_path),
-        "reports/daily_report_latest.html",
+        str(html_path),
     ]
 
 

@@ -2,7 +2,9 @@ import csv
 import os
 from datetime import datetime, timezone
 
-JOURNAL_FILE = "reports/trading_journal.csv"
+from config import TRADING_JOURNAL_CSV
+
+JOURNAL_FILE = TRADING_JOURNAL_CSV
 FIELDNAMES = [
     "timestamp",
     "symbol",

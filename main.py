@@ -31,7 +31,7 @@ from performance import run_live, print_performance
 from dashboard_live import run_live_terminal
 from mini_trading_system import run_mini_trading_system
 from realistic_backtest import run_realistic_backtest, print_realistic_backtest_summary
-from config import get_active_profile_name
+from config import DAILY_REPORT_HTML, get_active_profile_name
 
 
 def normalize_period_input(period):
@@ -209,8 +209,8 @@ def _run_mail(send_mail, pdf_path):
 
         attachments = [pdf_path]
 
-        if os.path.exists("reports/daily_report_latest.html"):
-            attachments.append("reports/daily_report_latest.html")
+        if os.path.exists(DAILY_REPORT_HTML):
+            attachments.append(DAILY_REPORT_HTML)
 
         send_report_email(attachment_paths=attachments)
 

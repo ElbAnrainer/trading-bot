@@ -4,6 +4,7 @@ import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 
+from config import TRADING_REPORT_PDF
 
 GMAIL_SMTP_HOST = "smtp.gmail.com"
 GMAIL_SMTP_PORT_TLS = 587
@@ -146,5 +147,4 @@ def send_report_email(
 
 
 if __name__ == "__main__":
-    latest_pdf = os.path.join("reports", "trading_report_latest.pdf")
-    send_report_email([latest_pdf])
+    send_report_email([TRADING_REPORT_PDF])

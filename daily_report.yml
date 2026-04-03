@@ -8,6 +8,9 @@ on:
 jobs:
   daily-report:
     runs-on: ubuntu-latest
+    env:
+      MPLCONFIGDIR: /tmp/mpl-trading-bot
+      TRADING_BOT_DATA_DIR: ${{ github.workspace }}
 
     steps:
       - name: Repository auschecken

@@ -5,10 +5,11 @@ import time
 
 import pandas as pd
 
+from config import MARKET_DATA_CACHE_DIR as DEFAULT_MARKET_DATA_CACHE_DIR
 from data_loader import load_data, load_fx_to_eur_data
 
 
-CACHE_DIR = Path(".cache/market_data")
+CACHE_DIR = Path(DEFAULT_MARKET_DATA_CACHE_DIR)
 DEFAULT_MAX_WORKERS = 8
 
 

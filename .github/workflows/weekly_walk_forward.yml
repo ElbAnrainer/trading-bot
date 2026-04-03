@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 25
     env:
       MPLCONFIGDIR: /tmp/mpl-trading-bot
+      TRADING_BOT_DATA_DIR: ${{ github.workspace }}
 
     steps:
       - name: Repository auschecken
@@ -66,17 +67,18 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          from config import REPORTS_DIR
           from gmail_api_report import send_report_email
 
           attachments = []
 
           candidates = [
-              os.path.join("reports", "walk_forward_latest.pdf"),
-              os.path.join("reports", "walk_forward_latest.html"),
-              os.path.join("reports", "walk_forward_latest.txt"),
-              os.path.join("reports", "walk_forward_latest.csv"),
-              os.path.join("reports", "walk_forward_latest.json"),
-              os.path.join("reports", "walk_forward_latest.xml"),
+              os.path.join(REPORTS_DIR, "walk_forward_latest.pdf"),
+              os.path.join(REPORTS_DIR, "walk_forward_latest.html"),
+              os.path.join(REPORTS_DIR, "walk_forward_latest.txt"),
+              os.path.join(REPORTS_DIR, "walk_forward_latest.csv"),
+              os.path.join(REPORTS_DIR, "walk_forward_latest.json"),
+              os.path.join(REPORTS_DIR, "walk_forward_latest.xml"),
           ]
 
           for path in candidates:

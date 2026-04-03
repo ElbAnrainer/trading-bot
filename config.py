@@ -1,14 +1,39 @@
 from __future__ import annotations
 
 import os
+import sys
 
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-REPORTS_DIR = "reports"
-REPORTS_PATH = os.path.join(PROJECT_ROOT, REPORTS_DIR)
+DATA_DIR_ENV_VAR = "TRADING_BOT_DATA_DIR"
+
+
+def _default_data_dir() -> str:
+    home = os.path.expanduser("~")
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Application Support", "trading-bot")
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(home, "AppData", "Local")
+        return os.path.join(base, "trading-bot")
+    return os.path.join(home, ".local", "share", "trading-bot")
+
+
+def _normalize_dir(path: str) -> str:
+    return os.path.abspath(os.path.expanduser(path))
+
+
+DATA_DIR = _normalize_dir(os.environ.get(DATA_DIR_ENV_VAR, _default_data_dir()))
+REPORTS_DIR = os.path.join(DATA_DIR, "reports")
+REPORTS_PATH = REPORTS_DIR
+CACHE_DIR = os.path.join(DATA_DIR, "cache")
+
+PROJECT_REPORTS_DIR = os.path.join(PROJECT_ROOT, "reports")
+PROJECT_CACHE_DIR = os.path.join(PROJECT_ROOT, ".cache")
 
 LOGS_DIR = os.path.join(REPORTS_DIR, "logs")
 STATUS_DIR = os.path.join(REPORTS_DIR, "status")
+MONITOR_HTML = os.path.join(STATUS_DIR, "monitor_latest.html")
+STATUS_JSON = os.path.join(STATUS_DIR, "check_status_latest.json")
 
 TRADING_JOURNAL_CSV = os.path.join(REPORTS_DIR, "trading_journal.csv")
 LEARNED_SCORES_JSON = os.path.join(REPORTS_DIR, "learned_scores.json")
@@ -24,6 +49,22 @@ DAILY_REPORT_XML = os.path.join(REPORTS_DIR, "daily_report_latest.xml")
 DAILY_REPORT_PDF = os.path.join(REPORTS_DIR, "daily_report_latest.pdf")
 STATE_FILE = os.path.join(REPORTS_DIR, "state.json")
 BROKER_FILE = os.path.join(REPORTS_DIR, "broker.json")
+CHART_PATH = os.path.join(REPORTS_DIR, "equity_curve.png")
+REALISTIC_CHART_PATH = os.path.join(REPORTS_DIR, "equity_curve_realistic.png")
+LEARNING_MODEL_JSON = os.path.join(CACHE_DIR, "learned_score_model.json")
+METADATA_CACHE_JSON = os.path.join(CACHE_DIR, "ticker_metadata.json")
+MARKET_DATA_CACHE_DIR = os.path.join(CACHE_DIR, "market_data")
+
+LEGACY_TRADING_JOURNAL_CSV = os.path.join(PROJECT_REPORTS_DIR, "trading_journal.csv")
+ROOT_TRADING_JOURNAL_CSV = os.path.join(PROJECT_ROOT, "trading_journal.csv")
+LEGACY_LEARNED_SCORES_JSON = os.path.join(PROJECT_REPORTS_DIR, "learned_scores.json")
+LEGACY_PORTFOLIO_STATE_JSON = os.path.join(PROJECT_REPORTS_DIR, "portfolio_state.json")
+LEGACY_REALISTIC_BACKTEST_JSON = os.path.join(PROJECT_REPORTS_DIR, "realistic_backtest_latest.json")
+LEGACY_STATE_FILE = os.path.join(PROJECT_REPORTS_DIR, "state.json")
+LEGACY_BROKER_FILE = os.path.join(PROJECT_REPORTS_DIR, "broker.json")
+LEGACY_DASHBOARD_JSON = os.path.join(PROJECT_REPORTS_DIR, "dashboard_latest.json")
+LEGACY_DASHBOARD_HTML = os.path.join(PROJECT_REPORTS_DIR, "dashboard_latest.html")
+LEGACY_PROFILE_FILE = os.path.join(PROJECT_REPORTS_DIR, "active_profile.txt")
 
 BASE_CURRENCY = "EUR"
 
@@ -159,8 +200,23 @@ DEFAULT_PROFILE_NAME = "mittel"
 _PROFILE_FILE = os.path.join(REPORTS_DIR, "active_profile.txt")
 
 
-def _ensure_reports_dir() -> None:
-    os.makedirs(REPORTS_DIR, exist_ok=True)
+def ensure_directory(path: str) -> str:
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def ensure_data_dir() -> str:
+    return ensure_directory(DATA_DIR)
+
+
+def ensure_reports_dir() -> str:
+    ensure_data_dir()
+    return ensure_directory(REPORTS_DIR)
+
+
+def ensure_cache_dir() -> str:
+    ensure_data_dir()
+    return ensure_directory(CACHE_DIR)
 
 
 def list_profile_names() -> list[str]:
@@ -179,10 +235,11 @@ def _normalize_profile_name(profile_name: str | None) -> str:
 
 def get_active_profile_name() -> str:
     try:
-        if os.path.exists(_PROFILE_FILE):
-            value = open(_PROFILE_FILE, "r", encoding="utf-8").read().strip().lower()
-            if value in TRADING_PROFILES:
-                return value
+        for candidate in (_PROFILE_FILE, LEGACY_PROFILE_FILE):
+            if os.path.exists(candidate):
+                value = open(candidate, "r", encoding="utf-8").read().strip().lower()
+                if value in TRADING_PROFILES:
+                    return value
     except Exception:
         pass
     return DEFAULT_PROFILE_NAME
@@ -190,7 +247,7 @@ def get_active_profile_name() -> str:
 
 def set_active_profile_name(profile_name: str) -> str:
     name = _normalize_profile_name(profile_name)
-    _ensure_reports_dir()
+    ensure_reports_dir()
     with open(_PROFILE_FILE, "w", encoding="utf-8") as f:
         f.write(name)
     return name

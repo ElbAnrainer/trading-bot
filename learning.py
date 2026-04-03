@@ -1,20 +1,30 @@
 import json
 import os
 
-LEARNING_FILE = os.path.join("reports", "learned_scores.json")
+from config import LEARNED_SCORES_JSON, LEGACY_LEARNED_SCORES_JSON, ensure_reports_dir
+
+LEARNING_FILE = LEARNED_SCORES_JSON
 
 
 def _ensure_dir():
-    os.makedirs("reports", exist_ok=True)
+    ensure_reports_dir()
+
+
+def _load_path():
+    for path in (LEARNING_FILE, LEGACY_LEARNED_SCORES_JSON):
+        if path and os.path.exists(path):
+            return path
+    return LEARNING_FILE
 
 
 def load_scores():
     _ensure_dir()
-    if not os.path.exists(LEARNING_FILE):
+    path = _load_path()
+    if not os.path.exists(path):
         return {}
 
     try:
-        with open(LEARNING_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
         return {}

@@ -4,12 +4,52 @@ set -u
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
+resolve_runtime_paths() {
+  local python_bin=""
+
+  if [ -x ".venv/bin/python" ]; then
+    python_bin=".venv/bin/python"
+  elif command -v python3 >/dev/null 2>&1; then
+    python_bin="$(command -v python3)"
+  elif command -v python >/dev/null 2>&1; then
+    python_bin="$(command -v python)"
+  else
+    return 1
+  fi
+
+  PYTHONPATH=. "$python_bin" - <<'PY'
+from config import DATA_DIR, REPORTS_DIR, STATUS_JSON
+
+print(DATA_DIR)
+print(REPORTS_DIR)
+print(STATUS_JSON)
+PY
+}
+
+if mapfile -t RUNTIME_PATHS < <(resolve_runtime_paths); then
+  DATA_DIR="${RUNTIME_PATHS[0]}"
+  REPORTS_DIR="${RUNTIME_PATHS[1]}"
+  STATUS_JSON="${RUNTIME_PATHS[2]}"
+else
+  case "$(uname -s)" in
+    Darwin)
+      DATA_DIR="${TRADING_BOT_DATA_DIR:-$HOME/Library/Application Support/trading-bot}"
+      ;;
+    *)
+      DATA_DIR="${TRADING_BOT_DATA_DIR:-$HOME/.local/share/trading-bot}"
+      ;;
+  esac
+  REPORTS_DIR="${DATA_DIR%/}/reports"
+  STATUS_JSON="${REPORTS_DIR}/status/check_status_latest.json"
+fi
+
+export TRADING_BOT_DATA_DIR="$DATA_DIR"
+
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-LOG_DIR="reports/logs"
-STATUS_DIR="reports/status"
+LOG_DIR="${REPORTS_DIR}/logs"
+STATUS_DIR="$(dirname "$STATUS_JSON")"
 LOG_FILE="$LOG_DIR/check_current_$TIMESTAMP.log"
 LATEST_LOG="$LOG_DIR/check_current_latest.log"
-STATUS_JSON="$STATUS_DIR/check_status_latest.json"
 
 mkdir -p "$LOG_DIR"
 mkdir -p "$STATUS_DIR"
@@ -67,6 +107,8 @@ check_dir() {
 print_header "Prüfe aktuellen Projektstand"
 
 echo "Projektordner: $PROJECT_ROOT"
+echo "Datenordner:   $DATA_DIR"
+echo "Report-Ordner: $REPORTS_DIR"
 echo "Zeit: $(date)"
 echo
 
@@ -93,7 +135,7 @@ check_file "SETUP_GITHUB_ACTIONS_MAIL.md"
 check_file ".github/workflows/daily_report.yml"
 check_file ".github/workflows/weekly_walk_forward.yml"
 
-check_dir "reports"
+check_dir "$REPORTS_DIR"
 check_dir "tests"
 
 echo
@@ -199,7 +241,7 @@ if [ -x ".venv/bin/python" ]; then
     print_fail "PDF-Report fehlgeschlagen"
   fi
 
-  if [ -f "reports/trading_report_latest.pdf" ]; then
+  if [ -f "$REPORTS_DIR/trading_report_latest.pdf" ]; then
     print_ok "Latest PDF vorhanden"
   else
     print_fail "Latest PDF fehlt"
@@ -219,7 +261,7 @@ if [ -x ".venv/bin/python" ]; then
     print_fail "Walk-Forward fehlgeschlagen"
   fi
 
-  if [ -f "reports/walk_forward_latest.pdf" ]; then
+  if [ -f "$REPORTS_DIR/walk_forward_latest.pdf" ]; then
     print_ok "Walk-Forward PDF vorhanden"
   else
     print_warn "Walk-Forward PDF fehlt"

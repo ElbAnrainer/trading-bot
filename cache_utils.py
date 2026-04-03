@@ -2,9 +2,9 @@ import json
 import os
 from pathlib import Path
 
-
-CACHE_DIR = Path(".cache")
-METADATA_CACHE_FILE = CACHE_DIR / "ticker_metadata.json"
+from config import CACHE_DIR as DEFAULT_CACHE_DIR, METADATA_CACHE_JSON
+CACHE_DIR = Path(DEFAULT_CACHE_DIR)
+METADATA_CACHE_FILE = Path(METADATA_CACHE_JSON)
 
 
 def _ensure_cache_dir():

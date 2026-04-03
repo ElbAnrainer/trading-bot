@@ -1,23 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from typing import Any
 
-from config import get_active_profile_name, get_trading_config
+from config import DASHBOARD_HTML, DASHBOARD_JSON, ensure_reports_dir, get_active_profile_name, get_trading_config
 from performance import analyze_performance
 from portfolio_state import load_portfolio_state, portfolio_summary
 from risk import risk_summary
 
 
-REPORTS_DIR = "reports"
-DASHBOARD_JSON = os.path.join(REPORTS_DIR, "dashboard_latest.json")
-DASHBOARD_HTML = os.path.join(REPORTS_DIR, "dashboard_latest.html")
-
-
 def _ensure_reports_dir() -> None:
-    os.makedirs(REPORTS_DIR, exist_ok=True)
+    ensure_reports_dir()
 
 
 def _safe_history_tail(state: dict[str, Any], n: int = 8) -> list[dict[str, Any]]:
