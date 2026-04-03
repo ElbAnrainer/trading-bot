@@ -269,6 +269,10 @@ run_standard() {
   run_with_controls "$PYTHON_BIN main.py -p \"$CURRENT_PERIOD\" -t \"$CURRENT_TOP\" -mv \"$CURRENT_MIN_VOLUME\""
 }
 
+run_pro_fast() {
+  run_with_controls "$PYTHON_BIN main.py --pro --fast -p \"$CURRENT_PERIOD\" -t \"$CURRENT_TOP\" -mv \"$CURRENT_MIN_VOLUME\""
+}
+
 run_live() {
   run_with_controls "$PYTHON_BIN main.py --live"
 }
@@ -290,22 +294,24 @@ main_menu() {
     header "TRADING TERMINAL"
 
     printf "${WHITE}1)${RESET} Standard\n"
-    printf "${WHITE}2)${RESET} Live\n"
-    printf "${WHITE}3)${RESET} Dashboard\n"
-    printf "${WHITE}4)${RESET} Tests\n"
-    printf "${WHITE}5)${RESET} PDF-Report\n"
-    printf "${WHITE}6)${RESET} Exit\n"
+    printf "${WHITE}2)${RESET} Pro Schnell\n"
+    printf "${WHITE}3)${RESET} Live\n"
+    printf "${WHITE}4)${RESET} Dashboard\n"
+    printf "${WHITE}5)${RESET} Tests\n"
+    printf "${WHITE}6)${RESET} PDF-Report\n"
+    printf "${WHITE}7)${RESET} Exit\n"
     echo
 
     read -r -p "Auswahl: " choice
 
     case "$choice" in
       1) run_standard ;;
-      2) run_live ;;
-      3) run_dashboard ;;
-      4) run_tests ;;
-      5) run_pdf_report ;;
-      6) exit 0 ;;
+      2) run_pro_fast ;;
+      3) run_live ;;
+      4) run_dashboard ;;
+      5) run_tests ;;
+      6) run_pdf_report ;;
+      7) exit 0 ;;
       q|Q) exit 0 ;;
       *)
         red_msg "Ungültige Auswahl"

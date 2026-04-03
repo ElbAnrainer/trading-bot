@@ -89,6 +89,7 @@ def box(title: str, lines: list[str] | tuple[str, ...] | None = None, width: int
 
 MENU_ITEMS = [
     ("Standard", "run_standard"),
+    ("Pro Schnell", "run_pro_fast"),
     ("Live", "run_live"),
     ("Dashboard", "run_dashboard"),
     ("Profil umschalten", "switch_profile"),
@@ -107,6 +108,21 @@ def _cmd_standard() -> list[str]:
     return [
         _python_bin(),
         "main.py",
+        "-p",
+        CURRENT_PERIOD,
+        "-t",
+        str(CURRENT_TOP),
+        "-mv",
+        str(CURRENT_MIN_VOLUME),
+    ]
+
+
+def _cmd_pro_fast() -> list[str]:
+    return [
+        _python_bin(),
+        "main.py",
+        "--pro",
+        "--fast",
         "-p",
         CURRENT_PERIOD,
         "-t",
@@ -404,6 +420,8 @@ def main(stdscr) -> None:
 
             if action == "run_standard":
                 _stream_process(stdscr, "Standard", _cmd_standard())
+            elif action == "run_pro_fast":
+                _stream_process(stdscr, "Pro Schnell", _cmd_pro_fast())
             elif action == "run_live":
                 _stream_process(stdscr, "Live", _cmd_live())
             elif action == "run_dashboard":

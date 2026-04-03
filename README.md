@@ -82,4 +82,5 @@ Mehr dazu steht in `docs/operations/runtime-data.md`.
 ```bash
 ./.venv/bin/python -m pytest -p no:cacheprovider -q
 env MPLCONFIGDIR=/tmp/mpl-trading-bot ./.venv/bin/python main.py --help
+env MPLCONFIGDIR=/tmp/mpl-trading-bot ./.venv/bin/python main.py --pro --fast
 ```
