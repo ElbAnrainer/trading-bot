@@ -45,8 +45,8 @@ backup_file_if_exists "main.py"
 backup_file_if_exists "cli.py"
 backup_file_if_exists "analysis_engine.py"
 backup_file_if_exists ".gitignore"
-backup_file_if_exists "docs/Refactor_Dokumentation.pdf"
-backup_file_if_exists "docs/Refactor_Dokumentation.docx"
+backup_file_if_exists "docs/refactor/Refactor_Dokumentation.pdf"
+backup_file_if_exists "docs/refactor/Refactor_Dokumentation.docx"
 
 echo
 echo "Entpacke Bundle ..."
@@ -80,18 +80,18 @@ copy_if_exists "${SOURCE_DIR}/cli.py" "${PROJECT_DIR}/cli.py"
 copy_if_exists "${SOURCE_DIR}/analysis_engine.py" "${PROJECT_DIR}/analysis_engine.py"
 
 # Doku lokal kopieren, wenn vorhanden
-mkdir -p "${PROJECT_DIR}/docs"
+mkdir -p "${PROJECT_DIR}/docs/refactor"
 
 if [[ -f "${PDF_DOC}" ]]; then
-  cp "${PDF_DOC}" "${PROJECT_DIR}/docs/Refactor_Dokumentation.pdf"
-  echo "Kopiert: ${PROJECT_DIR}/docs/Refactor_Dokumentation.pdf"
+  cp "${PDF_DOC}" "${PROJECT_DIR}/docs/refactor/Refactor_Dokumentation.pdf"
+  echo "Kopiert: ${PROJECT_DIR}/docs/refactor/Refactor_Dokumentation.pdf"
 else
   echo "PDF lokal nicht gefunden, übersprungen: ${PDF_DOC}"
 fi
 
 if [[ -f "${DOCX_DOC}" ]]; then
-  cp "${DOCX_DOC}" "${PROJECT_DIR}/docs/Refactor_Dokumentation.docx"
-  echo "Kopiert: ${PROJECT_DIR}/docs/Refactor_Dokumentation.docx"
+  cp "${DOCX_DOC}" "${PROJECT_DIR}/docs/refactor/Refactor_Dokumentation.docx"
+  echo "Kopiert: ${PROJECT_DIR}/docs/refactor/Refactor_Dokumentation.docx"
 else
   echo "DOCX lokal nicht gefunden, übersprungen: ${DOCX_DOC}"
 fi
