@@ -48,7 +48,13 @@ def test_analyze_performance_builds_sorted_ranking_and_portfolio(monkeypatch):
                 {"symbol": "AAA", "company": "Alpha", "isin": "US0000000001", "wkn": "AAA111", "pnl": 5.0, "score": 80.0},
                 {"symbol": "BBB", "company": "Beta", "isin": "US0000000002", "wkn": "BBB222", "pnl": -5.0, "score": 20.0},
             ],
-            [],
+            [
+                {"symbol": "AAA", "signal": "BUY"},
+                {"symbol": "AAA", "signal": "BUY"},
+                {"symbol": "BBB", "signal": "SELL"},
+                {"symbol": "CCC", "signal": "WATCH"},
+                {"symbol": "DDD", "signal": "HOLD"},
+            ],
         ),
     )
 
@@ -82,3 +88,9 @@ def test_analyze_performance_builds_sorted_ranking_and_portfolio(monkeypatch):
     assert portfolio_inputs["ranking"] == result["ranking"]
     assert result["top_symbols"][0]["isin"] == "US0000000001"
     assert result["portfolio"] == [{"symbol": "AAA", "isin": "US0000000001", "wkn": "AAA111", "weight": 1.0, "capital": 1000}]
+    assert result["total_entries"] == 5
+    assert result["buy_signals"] == 2
+    assert result["sell_signals"] == 1
+    assert result["watch_signals"] == 1
+    assert result["hold_signals"] == 1
+    assert result["stocks_total"] == 4

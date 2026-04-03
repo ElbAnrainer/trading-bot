@@ -16,7 +16,7 @@ from config import (
     REPORTS_DIR as DEFAULT_REPORTS_DIR,
     ensure_reports_dir,
 )
-from performance import analyze_performance
+from dashboard import build_dashboard_data
 from text_tables import format_table_row, format_table_separator
 
 
@@ -36,9 +36,30 @@ def _safe_get(stats, key, default=0):
     return stats.get(key, default)
 
 
+def _safe_text(value, default="-"):
+    text = str(value).strip() if value is not None else ""
+    return text if text else default
+
+
+def _safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _analysis_source_label(source):
+    mapping = {
+        "current_run": "Aktueller CLI-Lauf",
+        "latest_run": "Letzter gespeicherter Lauf",
+        "none": "Keine aktuelle Analyse",
+    }
+    return mapping.get(str(source), str(source))
+
+
 def _build_report_data():
     try:
-        stats = analyze_performance()
+        data = build_dashboard_data()
     except Exception as exc:
         return {
             "error": f"Performance konnte nicht geladen werden: {exc}",
@@ -46,22 +67,64 @@ def _build_report_data():
             "top_symbols": [],
         }
 
+    perf = data.get("performance", {})
+    analysis = data.get("analysis", {})
+    state = data.get("state", {})
+    profile = data.get("profile", {})
+    risk = data.get("risk", {})
+
+    top_symbols = perf.get("top_symbols") or [
+        {
+            "symbol": item.get("symbol", ""),
+            "company": item.get("company", item.get("symbol", "")),
+            "isin": item.get("isin", "-"),
+            "wkn": item.get("wkn", "-"),
+            "count": item.get("trades", 0),
+        }
+        for item in perf.get("ranking", [])[:5]
+    ]
+
     return {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "total_entries": _safe_get(stats, "total_entries", _safe_get(stats, "journal_entries", 0)),
-        "buy_signals": _safe_get(stats, "buy_signals", 0),
-        "sell_signals": _safe_get(stats, "sell_signals", 0),
-        "watch_signals": _safe_get(stats, "watch_signals", 0),
-        "hold_signals": _safe_get(stats, "hold_signals", 0),
-        "stocks_total": _safe_get(stats, "stocks_total", _safe_get(stats, "unique_symbols", 0)),
-        "closed_trades": _safe_get(stats, "closed_trades_count", _safe_get(stats, "closed_trades", 0)),
-        "winning_trades": _safe_get(stats, "winning_trades_count", _safe_get(stats, "winning_trades", 0)),
-        "losing_trades": _safe_get(stats, "losing_trades_count", _safe_get(stats, "losing_trades", 0)),
-        "hit_rate": _safe_get(stats, "hit_rate_pct", _safe_get(stats, "hit_rate", 0.0)),
-        "realized_pnl": _safe_get(stats, "realized_pnl_eur", _safe_get(stats, "realized_pnl", 0.0)),
-        "avg_trade": _safe_get(stats, "avg_trade_pnl_eur", _safe_get(stats, "avg_trade_pnl", 0.0)),
-        "top_symbols": stats.get("top_symbols", []),
-        "score_validation": stats.get("score_validation", []),
+        "analysis_source": analysis.get("source", "none"),
+        "analysis_source_label": _analysis_source_label(analysis.get("source", "none")),
+        "analysis_generated_at": _safe_text(analysis.get("generated_at"), "-"),
+        "analysis_period": _safe_text(analysis.get("period"), "-"),
+        "analysis_interval": _safe_text(analysis.get("interval"), "-"),
+        "analysis_result_count": len(analysis.get("current_results", [])),
+        "analysis_candidate_count": len(analysis.get("future_candidates", [])),
+        "analysis_order_count": len(analysis.get("orders", [])),
+        "current_results": analysis.get("current_results", [])[:5],
+        "future_candidates": analysis.get("future_candidates", [])[:5],
+        "trading_plan": analysis.get("trading_plan", [])[:5],
+        "simulated_portfolio": analysis.get("simulated_portfolio", [])[:8],
+        "orders": analysis.get("orders", [])[:8],
+        "profile_name": _safe_text(profile.get("name"), "-"),
+        "total_entries": _safe_get(perf, "total_entries", _safe_get(perf, "journal_entries", 0)),
+        "buy_signals": _safe_get(perf, "buy_signals", 0),
+        "sell_signals": _safe_get(perf, "sell_signals", 0),
+        "watch_signals": _safe_get(perf, "watch_signals", 0),
+        "hold_signals": _safe_get(perf, "hold_signals", 0),
+        "stocks_total": _safe_get(perf, "stocks_total", _safe_get(perf, "unique_symbols", 0)),
+        "closed_trades": _safe_get(perf, "closed_trades_count", _safe_get(perf, "closed_trades", 0)),
+        "winning_trades": _safe_get(perf, "winning_trades_count", _safe_get(perf, "winning_trades", 0)),
+        "losing_trades": _safe_get(perf, "losing_trades_count", _safe_get(perf, "losing_trades", 0)),
+        "hit_rate": _safe_get(perf, "hit_rate_pct", _safe_get(perf, "hit_rate", 0.0)),
+        "realized_pnl": _safe_get(perf, "realized_pnl_eur", _safe_get(perf, "realized_pnl", 0.0)),
+        "avg_trade": _safe_get(perf, "avg_trade_pnl_eur", _safe_get(perf, "avg_trade_pnl", 0.0)),
+        "top_symbols": top_symbols,
+        "score_validation": perf.get("score_validation", []),
+        "state_cash_eur": _safe_float(state.get("cash_eur")),
+        "state_invested_eur": _safe_float(state.get("total_invested_eur")),
+        "state_equity_eur": _safe_float(state.get("last_equity_eur")),
+        "state_peak_equity_eur": _safe_float(state.get("peak_equity_eur")),
+        "state_drawdown_pct": _safe_float(state.get("drawdown_pct")),
+        "state_positions": _safe_get(state, "positions", 0),
+        "state_updated_at": _safe_text(state.get("updated_at"), "-"),
+        "risk_max_position_pct": _safe_float(risk.get("max_position_pct")) * 100.0,
+        "risk_stop_loss_pct": _safe_float(risk.get("stop_loss_pct")) * 100.0,
+        "risk_trailing_stop_pct": _safe_float(risk.get("trailing_stop_pct")) * 100.0,
+        "risk_max_drawdown_pct": _safe_float(risk.get("max_drawdown_pct")) * 100.0,
     }
 
 
@@ -85,8 +148,166 @@ def _build_text_report(report):
         )
         return "\n".join(lines) + "\n"
 
+    def _append_section(title):
+        lines.extend(["", title, "----------------------------------------"])
+
+    def _append_table(columns, rows, empty_message):
+        if not rows:
+            lines.append(empty_message)
+            return
+        lines.append(format_table_row(columns))
+        lines.append(format_table_separator(columns))
+        for row in rows:
+            lines.append(format_table_row(row))
+
     lines.extend(
         [
+            "AKTUELLER ANALYSE-LAUF",
+            "----------------------------------------",
+            f"Quelle                : {report['analysis_source_label']}",
+            f"Profil                : {report['profile_name']}",
+            f"Analyse-Zeitpunkt     : {report['analysis_generated_at']}",
+            f"Zeitraum              : {report['analysis_period']}",
+            f"Intervall             : {report['analysis_interval']}",
+            f"Analyse-Ergebnisse    : {report['analysis_result_count']}",
+            f"Aktuelle Kandidaten   : {report['analysis_candidate_count']}",
+            f"Aktuelle Orders       : {report['analysis_order_count']}",
+        ]
+    )
+
+    _append_section("AKTUELLE ANALYSE-ERGEBNISSE")
+    _append_table(
+        [
+            ("SYM", 6, "<"),
+            ("ISIN", 12, "<"),
+            ("WKN", 6, "<"),
+            ("SIG", 5, "<"),
+            ("TRD", 5, ">"),
+            ("P/L EUR", 10, ">"),
+            ("SCORE", 7, ">"),
+        ],
+        [
+            [
+                (item.get("symbol", "-"), 6, "<"),
+                (item.get("isin", "-"), 12, "<"),
+                (item.get("wkn", "-"), 6, "<"),
+                (item.get("signal", "-"), 5, "<"),
+                (str(item.get("trade_count", 0)), 5, ">"),
+                (f"{_safe_float(item.get('pnl_eur')):.2f}", 10, ">"),
+                (f"{_safe_float(item.get('score')):.2f}", 7, ">"),
+            ]
+            for item in report["current_results"]
+        ],
+        "Keine frischen Analyse-Ergebnisse verfügbar.",
+    )
+
+    _append_section("AKTUELLE KAUFKANDIDATEN")
+    _append_table(
+        [
+            ("SYM", 6, "<"),
+            ("ISIN", 12, "<"),
+            ("WKN", 6, "<"),
+            ("SIG", 5, "<"),
+            ("SCORE", 7, ">"),
+            ("LEARN", 7, ">"),
+            ("NAME", 20, "<"),
+        ],
+        [
+            [
+                (item.get("symbol", "-"), 6, "<"),
+                (item.get("isin", "-"), 12, "<"),
+                (item.get("wkn", "-"), 6, "<"),
+                (item.get("future_signal", "-"), 5, "<"),
+                (f"{_safe_float(item.get('score')):.2f}", 7, ">"),
+                (f"{_safe_float(item.get('learned_bonus')):+.2f}", 7, ">"),
+                (item.get("company", item.get("company_name", "-")), 20, "<"),
+            ]
+            for item in report["future_candidates"]
+        ],
+        "Keine aktuellen Kaufkandidaten verfügbar.",
+    )
+
+    _append_section("AKTUELLER TRADING-PLAN")
+    _append_table(
+        [
+            ("SYM", 6, "<"),
+            ("ISIN", 12, "<"),
+            ("WKN", 6, "<"),
+            ("GEW", 5, ">"),
+            ("KAP EUR", 10, ">"),
+            ("LEARN", 7, ">"),
+            ("NAME", 20, "<"),
+        ],
+        [
+            [
+                (item.get("symbol", "-"), 6, "<"),
+                (item.get("isin", "-"), 12, "<"),
+                (item.get("wkn", "-"), 6, "<"),
+                (f"{_safe_float(item.get('weight')):.2f}", 5, ">"),
+                (f"{_safe_float(item.get('capital')):.2f}", 10, ">"),
+                (f"{_safe_float(item.get('learned_score')):.2f}", 7, ">"),
+                (item.get("company", item.get("company_name", "-")), 20, "<"),
+            ]
+            for item in report["trading_plan"]
+        ],
+        "Kein aktueller Trading-Plan verfügbar.",
+    )
+
+    _append_section("AKTUELLE ORDERS")
+    _append_table(
+        [
+            ("ACT", 5, "<"),
+            ("SYM", 6, "<"),
+            ("REASON", 24, "<"),
+            ("KAP EUR", 10, ">"),
+            ("GEW", 5, ">"),
+            ("LEARN", 7, ">"),
+        ],
+        [
+            [
+                (item.get("action", "-"), 5, "<"),
+                (item.get("symbol", "-"), 6, "<"),
+                (item.get("reason", "-"), 24, "<"),
+                (f"{_safe_float(item.get('capital')):.2f}", 10, ">"),
+                (f"{_safe_float(item.get('weight')):.2f}", 5, ">"),
+                (f"{_safe_float(item.get('learned_score')):.2f}", 7, ">"),
+            ]
+            for item in report["orders"]
+        ],
+        "Keine aktuellen Orders verfügbar.",
+    )
+
+    _append_section("SIMULIERTES DEPOT (AKTUELLER LAUF)")
+    _append_table(
+        [
+            ("SYM", 6, "<"),
+            ("ISIN", 12, "<"),
+            ("WKN", 6, "<"),
+            ("QTY", 7, ">"),
+            ("KURS", 10, ">"),
+            ("WERT", 10, ">"),
+            ("NAME", 20, "<"),
+        ],
+        [
+            [
+                (item.get("symbol", "-"), 6, "<"),
+                (item.get("isin", "-"), 12, "<"),
+                (item.get("wkn", "-"), 6, "<"),
+                (f"{_safe_float(item.get('qty')):.2f}", 7, ">"),
+                (f"{_safe_float(item.get('price_eur')):.2f}", 10, ">"),
+                (f"{_safe_float(item.get('value_eur')):.2f}", 10, ">"),
+                (item.get("company", item.get("company_name", "-")), 20, "<"),
+            ]
+            for item in report["simulated_portfolio"]
+        ],
+        "Kein simuliertes Depot aus dem aktuellen Lauf verfügbar.",
+    )
+
+    lines.extend(
+        [
+            "",
+            "HISTORISCHE PERFORMANCE",
+            "----------------------------------------",
             f"Journal-Einträge      : {report['total_entries']}",
             f"BUY Signale           : {report['buy_signals']}",
             f"SELL Signale          : {report['sell_signals']}",
@@ -100,39 +321,50 @@ def _build_text_report(report):
             f"Trefferquote          : {report['hit_rate']:.2f} %",
             f"Realisierter P/L      : {report['realized_pnl']:.2f} EUR",
             f"Ø Trade P/L           : {report['avg_trade']:.2f} EUR",
-            "",
-            "TOP AKTIEN",
-            "----------------------------------------",
         ]
     )
 
-    if report["top_symbols"]:
-        columns = [
+    _append_section("HISTORISCHE TOP-AKTIEN")
+    _append_table(
+        [
             ("SYM", 6, "<"),
             ("ISIN", 12, "<"),
             ("WKN", 6, "<"),
             ("ANZAHL", 6, ">"),
             ("NAME", 24, "<"),
-        ]
-        lines.append(format_table_row(columns))
-        lines.append(format_table_separator(columns))
-        for item in report["top_symbols"]:
-            lines.append(
-                format_table_row(
-                    [
-                        (item["symbol"], 6, "<"),
-                        (item.get("isin", "-"), 12, "<"),
-                        (item.get("wkn", "-"), 6, "<"),
-                        (str(item.get("count", 0)), 6, ">"),
-                        (item.get("company", item["symbol"]), 24, "<"),
-                    ]
-                )
-            )
-    else:
-        lines.append("Keine Top-Aktien verfügbar.")
+        ],
+        [
+            [
+                (item["symbol"], 6, "<"),
+                (item.get("isin", "-"), 12, "<"),
+                (item.get("wkn", "-"), 6, "<"),
+                (str(item.get("count", 0)), 6, ">"),
+                (item.get("company", item["symbol"]), 24, "<"),
+            ]
+            for item in report["top_symbols"]
+        ],
+        "Keine Top-Aktien verfügbar.",
+    )
 
     lines.extend(
         [
+            "",
+            "MINI-SYSTEM / DEPOT-STATE",
+            "----------------------------------------",
+            f"Cash                  : {report['state_cash_eur']:.2f} EUR",
+            f"Investiert            : {report['state_invested_eur']:.2f} EUR",
+            f"Equity                : {report['state_equity_eur']:.2f} EUR",
+            f"Peak Equity           : {report['state_peak_equity_eur']:.2f} EUR",
+            f"Drawdown              : {report['state_drawdown_pct']:.2f} %",
+            f"Offene Positionen     : {report['state_positions']}",
+            f"State-Update          : {report['state_updated_at']}",
+            "",
+            "RISIKOPROFIL",
+            "----------------------------------------",
+            f"Max Position          : {report['risk_max_position_pct']:.0f} %",
+            f"Stop-Loss             : {report['risk_stop_loss_pct']:.0f} %",
+            f"Trailing Stop         : {report['risk_trailing_stop_pct']:.0f} %",
+            f"Max Drawdown          : {report['risk_max_drawdown_pct']:.0f} %",
             "",
             "Hinweis: Nur Simulation. Keine Anlageberatung.",
         ]
@@ -163,6 +395,93 @@ def _build_html_report(report):
 </body>
 </html>
 """
+
+    current_result_rows = ""
+    for item in report["current_results"]:
+        current_result_rows += (
+            "<tr>"
+            f"<td>{item.get('symbol', '-')}</td>"
+            f"<td>{item.get('isin', '-')}</td>"
+            f"<td>{item.get('wkn', '-')}</td>"
+            f"<td>{item.get('signal', '-')}</td>"
+            f"<td>{item.get('company', item.get('company_name', item.get('symbol', '-')))}</td>"
+            f"<td>{_safe_float(item.get('pnl_eur')):.2f} EUR</td>"
+            f"<td>{int(item.get('trade_count', 0))}</td>"
+            f"<td>{_safe_float(item.get('score')):.2f}</td>"
+            "</tr>"
+        )
+
+    if not current_result_rows:
+        current_result_rows = "<tr><td colspan='8'>Keine frischen Analyse-Ergebnisse verfügbar.</td></tr>"
+
+    candidate_rows = ""
+    for item in report["future_candidates"]:
+        candidate_rows += (
+            "<tr>"
+            f"<td>{item.get('symbol', '-')}</td>"
+            f"<td>{item.get('isin', '-')}</td>"
+            f"<td>{item.get('wkn', '-')}</td>"
+            f"<td>{item.get('future_signal', '-')}</td>"
+            f"<td>{item.get('company', item.get('company_name', item.get('symbol', '-')))}</td>"
+            f"<td>{_safe_float(item.get('score')):.2f}</td>"
+            f"<td>{_safe_float(item.get('learned_bonus')):+.2f}</td>"
+            "</tr>"
+        )
+
+    if not candidate_rows:
+        candidate_rows = "<tr><td colspan='7'>Keine aktuellen Kaufkandidaten verfügbar.</td></tr>"
+
+    trading_plan_rows = ""
+    for item in report["trading_plan"]:
+        trading_plan_rows += (
+            "<tr>"
+            f"<td>{item.get('symbol', '-')}</td>"
+            f"<td>{item.get('isin', '-')}</td>"
+            f"<td>{item.get('wkn', '-')}</td>"
+            f"<td>{item.get('company', item.get('company_name', item.get('symbol', '-')))}</td>"
+            f"<td>{_safe_float(item.get('weight')):.2f}</td>"
+            f"<td>{_safe_float(item.get('capital')):.2f} EUR</td>"
+            f"<td>{_safe_float(item.get('learned_score')):.2f}</td>"
+            "</tr>"
+        )
+
+    if not trading_plan_rows:
+        trading_plan_rows = "<tr><td colspan='7'>Kein aktueller Trading-Plan verfügbar.</td></tr>"
+
+    order_rows = ""
+    for item in report["orders"]:
+        order_rows += (
+            "<tr>"
+            f"<td>{item.get('action', '-')}</td>"
+            f"<td>{item.get('symbol', '-')}</td>"
+            f"<td>{item.get('reason', '-')}</td>"
+            f"<td>{_safe_float(item.get('capital')):.2f} EUR</td>"
+            f"<td>{_safe_float(item.get('weight')):.2f}</td>"
+            f"<td>{_safe_float(item.get('learned_score')):.2f}</td>"
+            "</tr>"
+        )
+
+    if not order_rows:
+        order_rows = "<tr><td colspan='6'>Keine aktuellen Orders verfügbar.</td></tr>"
+
+    simulated_portfolio_rows = ""
+    for item in report["simulated_portfolio"]:
+        simulated_portfolio_rows += (
+            "<tr>"
+            f"<td>{item.get('symbol', '-')}</td>"
+            f"<td>{item.get('isin', '-')}</td>"
+            f"<td>{item.get('wkn', '-')}</td>"
+            f"<td>{item.get('company', item.get('company_name', item.get('symbol', '-')))}</td>"
+            f"<td>{_safe_float(item.get('qty')):.2f}</td>"
+            f"<td>{_safe_float(item.get('price_eur')):.2f} EUR</td>"
+            f"<td>{_safe_float(item.get('value_eur')):.2f} EUR</td>"
+            "</tr>"
+        )
+
+    if not simulated_portfolio_rows:
+        simulated_portfolio_rows = (
+            "<tr><td colspan='7'>Kein simuliertes Depot aus dem aktuellen Lauf verfügbar.</td></tr>"
+        )
 
     top_rows = ""
     for item in report["top_symbols"]:
@@ -250,19 +569,139 @@ def _build_html_report(report):
     </div>
 
     <div class="card">
-      <h2>Kennzahlen</h2>
+      <h2>Aktueller Analyse-Lauf</h2>
+      <p class="muted">Diese Werte stammen aus dem letzten frischen Analyse-Lauf und nicht aus dem historischen Journal.</p>
+      <p><strong>Quelle:</strong> {report['analysis_source_label']}</p>
+      <p><strong>Profil:</strong> {report['profile_name']}</p>
+      <p><strong>Analyse-Zeitpunkt:</strong> {report['analysis_generated_at']}</p>
+      <p><strong>Zeitraum:</strong> {report['analysis_period']} | <strong>Intervall:</strong> {report['analysis_interval']}</p>
+      <p><strong>Ergebnisse:</strong> {report['analysis_result_count']} | <strong>Kandidaten:</strong> {report['analysis_candidate_count']} | <strong>Orders:</strong> {report['analysis_order_count']}</p>
+    </div>
+
+    <div class="card">
+      <h2>Aktuelle Analyse-Ergebnisse</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
+            <th>Signal</th>
+            <th>Firma</th>
+            <th>P/L EUR</th>
+            <th>Trades</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {current_result_rows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Aktuelle Kaufkandidaten</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
+            <th>Signal</th>
+            <th>Firma</th>
+            <th>Score</th>
+            <th>Learned</th>
+          </tr>
+        </thead>
+        <tbody>
+          {candidate_rows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Aktueller Trading-Plan</h2>
+      <p class="muted">Dieser Abschnitt zeigt die aktuelle Allokation aus dem letzten Analyse-Lauf.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
+            <th>Firma</th>
+            <th>Gewicht</th>
+            <th>Kapital</th>
+            <th>Learned</th>
+          </tr>
+        </thead>
+        <tbody>
+          {trading_plan_rows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Aktuelle Orders</h2>
+      <p class="muted">Order-Vorschlaege aus dem letzten Analyse-Lauf.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Aktion</th>
+            <th>Symbol</th>
+            <th>Grund</th>
+            <th>Kapital</th>
+            <th>Gewicht</th>
+            <th>Learned</th>
+          </tr>
+        </thead>
+        <tbody>
+          {order_rows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Simuliertes Depot (aktueller Lauf)</h2>
+      <p class="muted">Virtuelles Analyse-Depot aus dem letzten CLI-Lauf, getrennt vom persistierten Mini-System-State.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
+            <th>Firma</th>
+            <th>Qty</th>
+            <th>Kurs EUR</th>
+            <th>Wert EUR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {simulated_portfolio_rows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Historische Performance</h2>
+      <p class="muted">Diese Kennzahlen werden aus dem persistierten Journal und dem selbstlernenden Score abgeleitet.</p>
       <div class="grid">
         <div class="kpi"><div class="label">Journal-Einträge</div><div class="value">{report['total_entries']}</div></div>
+        <div class="kpi"><div class="label">Aktien gesamt</div><div class="value">{report['stocks_total']}</div></div>
         <div class="kpi"><div class="label">Geschlossene Trades</div><div class="value">{report['closed_trades']}</div></div>
         <div class="kpi"><div class="label">Trefferquote</div><div class="value">{report['hit_rate']:.2f}%</div></div>
         <div class="kpi"><div class="label">BUY</div><div class="value">{report['buy_signals']}</div></div>
         <div class="kpi"><div class="label">SELL</div><div class="value">{report['sell_signals']}</div></div>
+        <div class="kpi"><div class="label">WATCH</div><div class="value">{report['watch_signals']}</div></div>
+        <div class="kpi"><div class="label">HOLD</div><div class="value">{report['hold_signals']}</div></div>
+        <div class="kpi"><div class="label">Gewinntrades</div><div class="value">{report['winning_trades']}</div></div>
+        <div class="kpi"><div class="label">Verlusttrades</div><div class="value">{report['losing_trades']}</div></div>
         <div class="kpi"><div class="label">Realisierter P/L</div><div class="value">{report['realized_pnl']:.2f} EUR</div></div>
+        <div class="kpi"><div class="label">Ø Trade P/L</div><div class="value">{report['avg_trade']:.2f} EUR</div></div>
       </div>
     </div>
 
     <div class="card">
-      <h2>Top-Aktien</h2>
+      <h2>Historische Top-Aktien</h2>
       <table>
         <thead>
           <tr>
@@ -277,6 +716,25 @@ def _build_html_report(report):
           {top_rows}
         </tbody>
       </table>
+    </div>
+
+    <div class="card">
+      <h2>Mini-System / Depot-State</h2>
+      <p class="muted">Diese Werte kommen aus dem persistierten Zustandsfile des Mini-Systems.</p>
+      <div class="grid">
+        <div class="kpi"><div class="label">Cash</div><div class="value">{report['state_cash_eur']:.2f} EUR</div></div>
+        <div class="kpi"><div class="label">Investiert</div><div class="value">{report['state_invested_eur']:.2f} EUR</div></div>
+        <div class="kpi"><div class="label">Equity</div><div class="value">{report['state_equity_eur']:.2f} EUR</div></div>
+        <div class="kpi"><div class="label">Peak Equity</div><div class="value">{report['state_peak_equity_eur']:.2f} EUR</div></div>
+        <div class="kpi"><div class="label">Drawdown</div><div class="value">{report['state_drawdown_pct']:.2f}%</div></div>
+        <div class="kpi"><div class="label">Offene Positionen</div><div class="value">{report['state_positions']}</div></div>
+      </div>
+      <p class="muted">State-Update: {report['state_updated_at']}</p>
+    </div>
+
+    <div class="card">
+      <h2>Risikoprofil</h2>
+      <p>Max Position: {report['risk_max_position_pct']:.0f}% | Stop-Loss: {report['risk_stop_loss_pct']:.0f}% | Trailing Stop: {report['risk_trailing_stop_pct']:.0f}% | Max Drawdown: {report['risk_max_drawdown_pct']:.0f}%</p>
     </div>
   </div>
 </body>
@@ -301,6 +759,15 @@ def _write_csv(report):
 
         for key in [
             "generated_at",
+            "analysis_source",
+            "analysis_source_label",
+            "analysis_generated_at",
+            "analysis_period",
+            "analysis_interval",
+            "analysis_result_count",
+            "analysis_candidate_count",
+            "analysis_order_count",
+            "profile_name",
             "total_entries",
             "buy_signals",
             "sell_signals",
@@ -313,8 +780,26 @@ def _write_csv(report):
             "hit_rate",
             "realized_pnl",
             "avg_trade",
+            "state_cash_eur",
+            "state_invested_eur",
+            "state_equity_eur",
+            "state_peak_equity_eur",
+            "state_drawdown_pct",
+            "state_positions",
+            "state_updated_at",
+            "risk_max_position_pct",
+            "risk_stop_loss_pct",
+            "risk_trailing_stop_pct",
+            "risk_max_drawdown_pct",
         ]:
             writer.writerow([key, report.get(key, "")])
+
+        writer.writerow(["current_results_rows", len(report.get("current_results", []))])
+        writer.writerow(["future_candidates_rows", len(report.get("future_candidates", []))])
+        writer.writerow(["trading_plan_rows", len(report.get("trading_plan", []))])
+        writer.writerow(["orders_rows", len(report.get("orders", []))])
+        writer.writerow(["simulated_portfolio_rows", len(report.get("simulated_portfolio", []))])
+        writer.writerow(["top_symbols_rows", len(report.get("top_symbols", []))])
 
         if "error" in report:
             writer.writerow(["error", report["error"]])
@@ -323,20 +808,57 @@ def _write_csv(report):
 def _write_xml(report):
     root = ET.Element("daily_report")
 
+    def _append_rows(parent_name, rows, fields):
+        parent = ET.SubElement(root, parent_name)
+        for item in rows:
+            row = ET.SubElement(parent, "row")
+            for field in fields:
+                ET.SubElement(row, field).text = str(item.get(field, ""))
+
     for key, value in report.items():
-        if key in {"top_symbols", "score_validation"}:
+        if key in {
+            "top_symbols",
+            "score_validation",
+            "current_results",
+            "future_candidates",
+            "trading_plan",
+            "simulated_portfolio",
+            "orders",
+        }:
             continue
         node = ET.SubElement(root, key)
         node.text = str(value)
 
-    top_symbols = ET.SubElement(root, "top_symbols")
-    for item in report.get("top_symbols", []):
-        sym = ET.SubElement(top_symbols, "symbol")
-        ET.SubElement(sym, "ticker").text = str(item.get("symbol", ""))
-        ET.SubElement(sym, "isin").text = str(item.get("isin", "-"))
-        ET.SubElement(sym, "wkn").text = str(item.get("wkn", "-"))
-        ET.SubElement(sym, "company").text = str(item.get("company", ""))
-        ET.SubElement(sym, "count").text = str(item.get("count", 0))
+    _append_rows(
+        "current_results",
+        report.get("current_results", []),
+        ["symbol", "isin", "wkn", "signal", "company", "pnl_eur", "trade_count", "score"],
+    )
+    _append_rows(
+        "future_candidates",
+        report.get("future_candidates", []),
+        ["symbol", "isin", "wkn", "future_signal", "company", "score", "learned_bonus"],
+    )
+    _append_rows(
+        "trading_plan",
+        report.get("trading_plan", []),
+        ["symbol", "isin", "wkn", "company", "weight", "capital", "learned_score"],
+    )
+    _append_rows(
+        "orders",
+        report.get("orders", []),
+        ["action", "symbol", "reason", "capital", "weight", "learned_score"],
+    )
+    _append_rows(
+        "simulated_portfolio",
+        report.get("simulated_portfolio", []),
+        ["symbol", "isin", "wkn", "company", "qty", "price_eur", "value_eur"],
+    )
+    _append_rows(
+        "top_symbols",
+        report.get("top_symbols", []),
+        ["symbol", "isin", "wkn", "company", "count"],
+    )
 
     tree = ET.ElementTree(root)
     tree.write(XML_PATH, encoding="utf-8", xml_declaration=True)
@@ -386,56 +908,175 @@ def _write_pdf(report):
         pdf.save()
         return
 
-    entries = [
-        ("Journal-Einträge", report["total_entries"]),
-        ("BUY Signale", report["buy_signals"]),
-        ("SELL Signale", report["sell_signals"]),
-        ("WATCH Signale", report["watch_signals"]),
-        ("HOLD Signale", report["hold_signals"]),
-        ("Aktien gesamt", report["stocks_total"]),
-        ("Geschlossene Trades", report["closed_trades"]),
-        ("Gewinntrades", report["winning_trades"]),
-        ("Verlusttrades", report["losing_trades"]),
-        ("Trefferquote", f"{report['hit_rate']:.2f} %"),
-        ("Realisierter P/L", f"{report['realized_pnl']:.2f} EUR"),
-        ("Ø Trade P/L", f"{report['avg_trade']:.2f} EUR"),
-    ]
-
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(x, y, "Kennzahlen")
-    y -= 18
-
-    pdf.setFont("Helvetica", 11)
-    for label, value in entries:
-        pdf.drawString(x, y, f"{label}:")
-        pdf.drawString(x + 180, y, str(value))
-        y -= 16
-        if y < 100:
+    def _ensure_space(lines=3):
+        nonlocal y
+        if y < 60 + (lines * 14):
             pdf.showPage()
             y = height - 50
-            pdf.setFont("Helvetica", 11)
 
-    y -= 8
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(x, y, "Top-Aktien")
-    y -= 18
+    def _section(title):
+        nonlocal y
+        _ensure_space(3)
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(x, y, title)
+        y -= 18
 
-    pdf.setFont("Helvetica", 11)
-    if report.get("top_symbols"):
-        for item in report["top_symbols"]:
-            line = (
-                f"{item['symbol']} ({item.get('company', item['symbol'])}) | "
+    def _kv_lines(entries):
+        nonlocal y
+        pdf.setFont("Helvetica", 11)
+        for label, value in entries:
+            _ensure_space(2)
+            pdf.drawString(x, y, f"{label}:")
+            y = _draw_wrapped_text(pdf, str(value), x + 180, y, max_width - 180)
+
+    def _wrapped_lines(lines, empty_message):
+        nonlocal y
+        pdf.setFont("Helvetica", 11)
+        if not lines:
+            _ensure_space(2)
+            pdf.drawString(x, y, empty_message)
+            y -= 16
+            return
+        for line in lines:
+            _ensure_space(2)
+            y = _draw_wrapped_text(pdf, line, x, y, max_width)
+
+    _section("Aktueller Analyse-Lauf")
+    _kv_lines(
+        [
+            ("Quelle", report["analysis_source_label"]),
+            ("Profil", report["profile_name"]),
+            ("Analyse-Zeitpunkt", report["analysis_generated_at"]),
+            ("Zeitraum", report["analysis_period"]),
+            ("Intervall", report["analysis_interval"]),
+            ("Analyse-Ergebnisse", report["analysis_result_count"]),
+            ("Aktuelle Kandidaten", report["analysis_candidate_count"]),
+            ("Aktuelle Orders", report["analysis_order_count"]),
+        ]
+    )
+
+    _section("Aktuelle Analyse-Ergebnisse")
+    _wrapped_lines(
+        [
+            (
+                f"{item.get('symbol', '-')} | ISIN {item.get('isin', '-')} | WKN {item.get('wkn', '-')} | "
+                f"Signal {item.get('signal', '-')} | P/L { _safe_float(item.get('pnl_eur')):.2f} EUR | "
+                f"Trades {int(item.get('trade_count', 0))} | Score { _safe_float(item.get('score')):.2f}"
+            )
+            for item in report.get("current_results", [])
+        ],
+        "Keine frischen Analyse-Ergebnisse verfügbar.",
+    )
+
+    _section("Aktuelle Kaufkandidaten")
+    _wrapped_lines(
+        [
+            (
+                f"{item.get('symbol', '-')} | ISIN {item.get('isin', '-')} | WKN {item.get('wkn', '-')} | "
+                f"Signal {item.get('future_signal', '-')} | Score { _safe_float(item.get('score')):.2f} | "
+                f"Learned { _safe_float(item.get('learned_bonus')):+.2f} | "
+                f"{item.get('company', item.get('company_name', item.get('symbol', '-')))}"
+            )
+            for item in report.get("future_candidates", [])
+        ],
+        "Keine aktuellen Kaufkandidaten verfügbar.",
+    )
+
+    _section("Aktueller Trading-Plan")
+    _wrapped_lines(
+        [
+            (
+                f"{item.get('symbol', '-')} | ISIN {item.get('isin', '-')} | WKN {item.get('wkn', '-')} | "
+                f"Gewicht { _safe_float(item.get('weight')):.2f} | Kapital { _safe_float(item.get('capital')):.2f} EUR | "
+                f"Learned { _safe_float(item.get('learned_score')):.2f} | "
+                f"{item.get('company', item.get('company_name', item.get('symbol', '-')))}"
+            )
+            for item in report.get("trading_plan", [])
+        ],
+        "Kein aktueller Trading-Plan verfügbar.",
+    )
+
+    _section("Aktuelle Orders")
+    _wrapped_lines(
+        [
+            (
+                f"{item.get('action', '-')} {item.get('symbol', '-')} | "
+                f"Grund {item.get('reason', '-')} | Kapital { _safe_float(item.get('capital')):.2f} EUR | "
+                f"Gewicht { _safe_float(item.get('weight')):.2f} | "
+                f"Learned { _safe_float(item.get('learned_score')):.2f}"
+            )
+            for item in report.get("orders", [])
+        ],
+        "Keine aktuellen Orders verfügbar.",
+    )
+
+    _section("Simuliertes Depot (aktueller Lauf)")
+    _wrapped_lines(
+        [
+            (
+                f"{item.get('symbol', '-')} | ISIN {item.get('isin', '-')} | WKN {item.get('wkn', '-')} | "
+                f"Qty { _safe_float(item.get('qty')):.2f} | Kurs { _safe_float(item.get('price_eur')):.2f} EUR | "
+                f"Wert { _safe_float(item.get('value_eur')):.2f} EUR | "
+                f"{item.get('company', item.get('company_name', item.get('symbol', '-')))}"
+            )
+            for item in report.get("simulated_portfolio", [])
+        ],
+        "Kein simuliertes Depot aus dem aktuellen Lauf verfügbar.",
+    )
+
+    _section("Historische Performance")
+    _kv_lines(
+        [
+            ("Journal-Einträge", report["total_entries"]),
+            ("BUY Signale", report["buy_signals"]),
+            ("SELL Signale", report["sell_signals"]),
+            ("WATCH Signale", report["watch_signals"]),
+            ("HOLD Signale", report["hold_signals"]),
+            ("Aktien gesamt", report["stocks_total"]),
+            ("Geschlossene Trades", report["closed_trades"]),
+            ("Gewinntrades", report["winning_trades"]),
+            ("Verlusttrades", report["losing_trades"]),
+            ("Trefferquote", f"{report['hit_rate']:.2f} %"),
+            ("Realisierter P/L", f"{report['realized_pnl']:.2f} EUR"),
+            ("Ø Trade P/L", f"{report['avg_trade']:.2f} EUR"),
+        ]
+    )
+
+    _section("Historische Top-Aktien")
+    _wrapped_lines(
+        [
+            (
+                f"{item.get('symbol', '-')} ({item.get('company', item.get('symbol', '-'))}) | "
                 f"ISIN: {item.get('isin', '-')} | WKN: {item.get('wkn', '-')} | "
                 f"Anzahl: {item.get('count', 0)}"
             )
-            y = _draw_wrapped_text(pdf, line, x, y, max_width)
-            if y < 100:
-                pdf.showPage()
-                y = height - 50
-                pdf.setFont("Helvetica", 11)
-    else:
-        pdf.drawString(x, y, "Keine Top-Aktien verfügbar.")
-        y -= 16
+            for item in report.get("top_symbols", [])
+        ],
+        "Keine Top-Aktien verfügbar.",
+    )
+
+    _section("Mini-System / Depot-State")
+    _kv_lines(
+        [
+            ("Cash", f"{report['state_cash_eur']:.2f} EUR"),
+            ("Investiert", f"{report['state_invested_eur']:.2f} EUR"),
+            ("Equity", f"{report['state_equity_eur']:.2f} EUR"),
+            ("Peak Equity", f"{report['state_peak_equity_eur']:.2f} EUR"),
+            ("Drawdown", f"{report['state_drawdown_pct']:.2f} %"),
+            ("Offene Positionen", report["state_positions"]),
+            ("State-Update", report["state_updated_at"]),
+        ]
+    )
+
+    _section("Risikoprofil")
+    _kv_lines(
+        [
+            ("Max Position", f"{report['risk_max_position_pct']:.0f} %"),
+            ("Stop-Loss", f"{report['risk_stop_loss_pct']:.0f} %"),
+            ("Trailing Stop", f"{report['risk_trailing_stop_pct']:.0f} %"),
+            ("Max Drawdown", f"{report['risk_max_drawdown_pct']:.0f} %"),
+        ]
+    )
 
     pdf.save()
 

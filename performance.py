@@ -75,6 +75,22 @@ def _load():
 # =========================================================
 def analyze_performance():
     trades, rows = _load()
+    signal_counts = {
+        "BUY": 0,
+        "SELL": 0,
+        "WATCH": 0,
+        "HOLD": 0,
+    }
+    symbols = set()
+
+    for row in rows:
+        symbol = str(row.get("symbol", "")).strip()
+        if symbol:
+            symbols.add(symbol)
+
+        signal = str(row.get("signal", "")).strip().upper()
+        if signal in signal_counts:
+            signal_counts[signal] += 1
 
     stats = defaultdict(lambda: {
         "company": "",
@@ -144,6 +160,12 @@ def analyze_performance():
         "portfolio": portfolio,
         "top_symbols": top_symbols,
         "total_entries": len(rows),
+        "buy_signals": signal_counts["BUY"],
+        "sell_signals": signal_counts["SELL"],
+        "watch_signals": signal_counts["WATCH"],
+        "hold_signals": signal_counts["HOLD"],
+        "stocks_total": len(symbols),
+        "unique_symbols": len(symbols),
         "closed_trades": len(trades),
         "winning_trades": sum(1 for t in trades if t["pnl"] > 0),
         "losing_trades": sum(1 for t in trades if t["pnl"] < 0),
