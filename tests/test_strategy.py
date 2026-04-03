@@ -1,6 +1,7 @@
 import pandas as pd
 
 from strategy import (
+    _risk_label,
     add_signals,
     compute_qty,
     normalize_signal_from_row,
@@ -98,3 +99,30 @@ def test_analyze_symbol_contains_future_fields():
     assert "strength" in out
     assert "risk" in out
     assert "reasons" in out
+
+
+def test_add_signals_stores_volatility_20_as_decimal():
+    closes = [100.0]
+    for idx in range(1, 60):
+        closes.append(closes[-1] * (1.04 if idx % 2 else 0.96))
+
+    df = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": [value * 1.01 for value in closes],
+            "Low": [value * 0.99 for value in closes],
+            "Close": closes,
+            "Volume": [10_000_000] * len(closes),
+        }
+    )
+
+    out = add_signals(df)
+    latest_volatility = float(out["volatility_20"].dropna().iloc[-1])
+
+    assert 0.02 < latest_volatility < 0.06
+
+
+def test_risk_label_uses_decimal_volatility_thresholds():
+    assert _risk_label(0.05, 0.0) == "hoch"
+    assert _risk_label(0.03, 0.0) == "mittel"
+    assert _risk_label(0.01, 0.0) == "niedrig"

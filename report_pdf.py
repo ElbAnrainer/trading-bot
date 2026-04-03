@@ -337,7 +337,7 @@ def _build_profile_section(content: list[Any], section_style: ParagraphStyle, bo
         ["Cooldown", str(cfg.get("cooldown_bars", "-"))],
         ["Max Trades/Woche", str(cfg.get("max_new_trades_per_week", "-"))],
         ["Min Learned Score", f"{float(cfg.get('min_learned_score', 0.0)):.2f}"],
-        ["Max Volatilität 20", f"{float(cfg.get('max_volatility_20', 0.0)):.4f}"],
+        ["Max Volatilität 20", f"{float(cfg.get('max_volatility_20', 0.0)):.2%}"],
         ["Min erwarteter Edge", f"{float(cfg.get('min_expected_edge_pct', 0.0)):.2%}"],
     ]
 
@@ -483,7 +483,7 @@ def _build_realistic_section(
             ["Max neue Trades/Tag", str(anti.get("max_new_trades_per_bar", "-"))],
             ["Max Trades/Woche", str(anti.get("max_new_trades_per_week", "-"))],
             ["Min Learned Score", f"{float(anti.get('min_learned_score', 0.0)):.2f}"],
-            ["Max Volatilität 20", f"{float(anti.get('max_volatility_20', 0.0)):.4f}"],
+            ["Max Volatilität 20", f"{float(anti.get('max_volatility_20', 0.0)):.2%}"],
             ["Min Stop-Abstand", f"{float(anti.get('min_stop_distance_pct', 0.0)):.2%}"],
             ["Min erwarteter Edge", f"{float(anti.get('min_expected_edge_pct', 0.0)):.2%}"],
         ]

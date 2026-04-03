@@ -93,13 +93,28 @@ def _strength_label(score: float) -> str:
 
 
 def _risk_label(volatility_pct: float, relative_strength_pct: float) -> str:
-    if volatility_pct >= 4.5:
+    if volatility_pct >= 0.045:
         return "hoch"
-    if volatility_pct >= 2.5:
+    if volatility_pct >= 0.025:
         return "mittel"
     if relative_strength_pct < -5:
         return "mittel"
     return "niedrig"
+
+
+def _normalize_volatility_20(value: float) -> float:
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+    if math.isnan(value):
+        return 0.0
+
+    # Aeltere Daten konnten Volatilitaet als Prozentwert statt Dezimalzahl tragen.
+    if value > 1.0:
+        return value / 100.0
+    return max(0.0, value)
 
 
 def add_signals(df: pd.DataFrame) -> pd.DataFrame:
@@ -158,7 +173,7 @@ def add_signals(df: pd.DataFrame) -> pd.DataFrame:
     out["momentum_60"] = close.pct_change(60)
 
     out["return_1d"] = close.pct_change()
-    out["volatility_20"] = out["return_1d"].rolling(20).std() * 100.0
+    out["volatility_20"] = out["return_1d"].rolling(20).std()
 
     out["breakout_20"] = _rolling_breakout(close, 20)
 
@@ -231,7 +246,7 @@ def analyze_symbol(
     sma200 = float(latest.get("sma200", np.nan))
     momentum_20 = float(latest.get("momentum_20", 0.0))
     momentum_60 = float(latest.get("momentum_60", 0.0))
-    volatility_pct = float(latest.get("volatility_20", 0.0))
+    volatility_pct = _normalize_volatility_20(latest.get("volatility_20", 0.0))
 
     benchmark_close = None
     if benchmark_df is not None and not benchmark_df.empty and "Close" in benchmark_df.columns:
@@ -313,5 +328,5 @@ def analyze_symbol(
         "risk": _risk_label(volatility_pct, rs_pct),
         "reasons": reasons,
         "is_candidate": is_candidate,
-        "volatility_pct": volatility_pct,
+        "volatility_pct": volatility_pct * 100.0,
     }

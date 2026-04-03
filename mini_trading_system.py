@@ -137,7 +137,8 @@ def _row_volatility(row) -> float:
     if row is None:
         return 0.0
     try:
-        return float(row.get("volatility_20", 0.0) or 0.0)
+        value = float(row.get("volatility_20", 0.0) or 0.0)
+        return value / 100.0 if value > 1.0 else value
     except Exception:
         return 0.0
 

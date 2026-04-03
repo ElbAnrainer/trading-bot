@@ -163,7 +163,8 @@ def _week_key(ts: pd.Timestamp) -> str:
 def _row_volatility(row: pd.Series) -> float:
     if "volatility_20" in row and pd.notna(row["volatility_20"]):
         try:
-            return float(row["volatility_20"])
+            value = float(row["volatility_20"])
+            return value / 100.0 if value > 1.0 else value
         except Exception:
             pass
     return 0.0

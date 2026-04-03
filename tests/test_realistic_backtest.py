@@ -100,6 +100,12 @@ def test_drawdown_and_edge_helpers_cover_core_math():
     assert rb._expected_edge_pct(row, stop_loss_pct=0.08, fee_pct=0.001, slippage_pct=0.001) == pytest.approx(0.038)
 
 
+def test_row_volatility_normalizes_legacy_percentage_values():
+    row = pd.Series({"volatility_20": 3.0})
+
+    assert rb._row_volatility(row) == 0.03
+
+
 def test_pick_symbols_falls_back_to_performance_ranking(monkeypatch):
     monkeypatch.setattr(
         rb,

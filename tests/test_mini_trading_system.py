@@ -100,6 +100,10 @@ def test_mark_to_market_equity_uses_latest_close_and_entry_fallback(monkeypatch)
     assert equity == 470.0
 
 
+def test_row_volatility_normalizes_legacy_percentage_values():
+    assert mts._row_volatility({"volatility_20": 3.0}) == 0.03
+
+
 def test_run_mini_trading_system_records_buy_event_with_time(monkeypatch):
     monkeypatch.setattr(mts, "datetime", FixedDateTime)
     _patch_state_helpers(monkeypatch)
