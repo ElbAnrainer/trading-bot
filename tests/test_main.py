@@ -47,6 +47,15 @@ def test_parse_args_accepts_pro_alias(monkeypatch):
     assert period_override is None
 
 
+def test_parse_cli_accepts_fast_mode(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["main.py", "--pro", "--fast"])
+
+    args = main._parse_cli()
+
+    assert args.pro_mode is True
+    assert args.fast is True
+
+
 def test_get_signal_from_df():
     df = pd.DataFrame(
         {
@@ -156,6 +165,7 @@ def test_run_uses_pro_mode_for_analysis(monkeypatch):
         period="1mo",
         min_volume=250000,
         long=False,
+        fast=False,
         skip_realistic_backtest=True,
         no_pdf=True,
         mail=False,
@@ -204,6 +214,7 @@ def test_run_live_flag_keeps_live_mode_separate(monkeypatch):
         period=None,
         min_volume=1000000,
         long=False,
+        fast=False,
         skip_realistic_backtest=False,
         no_pdf=False,
         mail=False,
@@ -219,3 +230,53 @@ def test_run_live_flag_keeps_live_mode_separate(monkeypatch):
     main.run()
 
     assert called["live"] is True
+
+
+def test_run_fast_mode_skips_walk_forward_and_realistic_backtest(monkeypatch):
+    args = Namespace(
+        dashboard=False,
+        mini_system=False,
+        live=False,
+        pro_mode=True,
+        beginner=False,
+        top=3,
+        period="1mo",
+        min_volume=1000000,
+        long=False,
+        fast=True,
+        skip_realistic_backtest=False,
+        no_pdf=True,
+        mail=False,
+    )
+
+    calls = {
+        "walk_forward": 0,
+        "realistic_backtest": 0,
+    }
+
+    monkeypatch.setattr(main, "_parse_cli", lambda: args)
+    monkeypatch.setattr(main, "check_dependencies", lambda: True)
+    monkeypatch.setattr(main, "get_active_profile_name", lambda: "test")
+    monkeypatch.setattr(main, "set_pro_mode", lambda enabled: None)
+    monkeypatch.setattr(main, "set_beginner_mode", lambda enabled: None)
+    monkeypatch.setattr(main, "run_analysis", lambda **kwargs: {"future_candidates": [], "results": []})
+    monkeypatch.setattr(main, "build_trading_plan", lambda **kwargs: {})
+    monkeypatch.setattr(main, "print_trading_plan", lambda plan: None)
+    monkeypatch.setattr(main, "simulate_trading_decisions", lambda **kwargs: [])
+    monkeypatch.setattr(main, "print_trading_decisions", lambda decisions: None)
+    monkeypatch.setattr(main, "run_walk_forward", lambda: calls.__setitem__("walk_forward", calls["walk_forward"] + 1))
+    monkeypatch.setattr(
+        main,
+        "run_realistic_backtest",
+        lambda **kwargs: calls.__setitem__("realistic_backtest", calls["realistic_backtest"] + 1),
+    )
+    monkeypatch.setattr(main, "print_realistic_backtest_summary", lambda realistic: None)
+    monkeypatch.setattr(main, "print_performance", lambda: None)
+    monkeypatch.setattr(main, "print_runtime", lambda runtime: None)
+    monkeypatch.setattr(main, "print_explanations", lambda: None)
+    monkeypatch.setattr(main, "_run_mail", lambda send_mail, pdf_path: None)
+
+    main.run()
+
+    assert calls["walk_forward"] == 0
+    assert calls["realistic_backtest"] == 0

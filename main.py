@@ -108,6 +108,7 @@ def _build_cli_parser():
             "  python main.py\n"
             "  python main.py -p 6mo -t 10\n"
             "  python main.py --pro\n"
+            "  python main.py --pro --fast\n"
             "  python main.py --live\n"
             "  python main.py --dashboard\n"
             "  python main.py --mini-system\n"
@@ -148,6 +149,11 @@ def _build_cli_parser():
         "--live",
         action="store_true",
         help="Separate Live-Tabelle mit laufend aktualisierten Score-Daten anzeigen",
+    )
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Schnellmodus fuer Analyse/--pro: ueberspringt Walk-Forward und realistischen Backtest",
     )
     parser.add_argument(
         "--dashboard",
@@ -298,9 +304,12 @@ def run():
     )
     print_trading_decisions(decisions)
 
-    run_walk_forward()
+    if args.fast:
+        print("\n[FAST MODE] Walk-Forward und realistischer Backtest werden uebersprungen.")
+    else:
+        run_walk_forward()
 
-    if not args.skip_realistic_backtest:
+    if not args.fast and not args.skip_realistic_backtest:
         symbols = _symbols_for_realistic_backtest(result, top_n=args.top)
         realistic = run_realistic_backtest(
             symbols=symbols,

@@ -30,6 +30,11 @@ Pro-/Live-Modus.
 .B \-\-live
 Zeigt die Live-Tabelle mit selbstlernendem Score.
 .TP
+.B \-\-fast
+Schnellmodus fuer Analyse und
+.BR \-\-pro :
+ueberspringt Walk-Forward und realistischen Backtest.
+.TP
 .B \-\-long
 Erweiterte Detailausgabe.
 .TP
@@ -131,6 +136,9 @@ Normale Analyse starten.
 .TP
 .B python main.py --live
 Live-Tabelle starten.
+.TP
+.B python main.py --pro --fast
+Schnellen Pro-Lauf ohne Walk-Forward und realistischen Backtest starten.
 .TP
 .B python main.py --dashboard
 Dashboard starten.
