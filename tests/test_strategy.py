@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from strategy import (
     _risk_label,
@@ -64,6 +65,16 @@ def test_stop_loss_price():
 
 def test_take_profit_price():
     assert take_profit_price(100.0) > 100.0
+
+
+def test_stop_loss_price_uses_profile_stop_loss():
+    assert stop_loss_price(100.0, profile_name="konservativ") == pytest.approx(92.0)
+    assert stop_loss_price(100.0, profile_name="offensiv") == pytest.approx(93.0)
+
+
+def test_take_profit_price_uses_profile_take_profit():
+    assert take_profit_price(100.0, profile_name="konservativ") == pytest.approx(116.0)
+    assert take_profit_price(100.0, profile_name="offensiv") == pytest.approx(114.0)
 
 
 def test_normalize_signal_from_row_buy():

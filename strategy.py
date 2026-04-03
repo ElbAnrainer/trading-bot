@@ -4,17 +4,30 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from config import get_trading_config
 
 STOP_LOSS_PCT = 0.08
 TAKE_PROFIT_PCT = 0.16
 
 
-def stop_loss_price(entry_price: float) -> float:
-    return float(entry_price) * (1.0 - STOP_LOSS_PCT)
+def _strategy_risk_config(profile_name: str | None = None) -> dict[str, float]:
+    cfg = get_trading_config(profile_name)
+    stop_loss_pct = float(cfg.get("stop_loss_pct", STOP_LOSS_PCT))
+    take_profit_pct = float(cfg.get("take_profit_pct", stop_loss_pct * 2.0))
+    return {
+        "stop_loss_pct": stop_loss_pct,
+        "take_profit_pct": take_profit_pct,
+    }
 
 
-def take_profit_price(entry_price: float) -> float:
-    return float(entry_price) * (1.0 + TAKE_PROFIT_PCT)
+def stop_loss_price(entry_price: float, profile_name: str | None = None) -> float:
+    cfg = _strategy_risk_config(profile_name)
+    return float(entry_price) * (1.0 - float(cfg["stop_loss_pct"]))
+
+
+def take_profit_price(entry_price: float, profile_name: str | None = None) -> float:
+    cfg = _strategy_risk_config(profile_name)
+    return float(entry_price) * (1.0 + float(cfg["take_profit_pct"]))
 
 
 def compute_qty(cash_eur: float, price_eur: float) -> int:

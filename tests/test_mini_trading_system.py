@@ -197,7 +197,7 @@ def test_run_mini_trading_system_records_sell_event_with_time(monkeypatch):
     monkeypatch.setattr(
         mts,
         "evaluate_open_position",
-        lambda pos, df: {
+        lambda pos, df, profile_name=None: {
             "action": "SELL",
             "reason": "SELL_SIGNAL",
             "price": 110.0,
@@ -256,7 +256,7 @@ def test_run_mini_trading_system_keeps_position_when_sell_signal_too_early(monke
     monkeypatch.setattr(
         mts,
         "evaluate_open_position",
-        lambda pos, df: {
+        lambda pos, df, profile_name=None: {
             "action": "SELL",
             "reason": "SELL_SIGNAL",
             "price": 101.0,

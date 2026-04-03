@@ -5,11 +5,8 @@ from typing import Any
 
 import pandas as pd
 
+from risk import stop_loss_price, trailing_stop_price
 from strategy import add_signals
-
-
-STOP_LOSS_PCT = 0.05
-TRAILING_STOP_PCT = 0.08
 
 
 @dataclass
@@ -22,12 +19,12 @@ class Position:
     opened_at: str
 
 
-def _stop_loss_price(entry_price: float) -> float:
-    return float(entry_price) * (1.0 - STOP_LOSS_PCT)
+def _stop_loss_price(entry_price: float, profile_name: str | None = None) -> float:
+    return stop_loss_price(entry_price, profile_name=profile_name)
 
 
-def _trailing_stop_price(highest_price: float) -> float:
-    return float(highest_price) * (1.0 - TRAILING_STOP_PCT)
+def _trailing_stop_price(highest_price: float, profile_name: str | None = None) -> float:
+    return trailing_stop_price(highest_price, profile_name=profile_name)
 
 
 def latest_signal(df: pd.DataFrame) -> dict[str, Any]:
@@ -66,7 +63,11 @@ def latest_signal(df: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-def evaluate_open_position(position: dict[str, Any], df: pd.DataFrame) -> dict[str, Any]:
+def evaluate_open_position(
+    position: dict[str, Any],
+    df: pd.DataFrame,
+    profile_name: str | None = None,
+) -> dict[str, Any]:
     """
     Prüft eine bestehende Position gegen die letzte Candle
     und entscheidet SELL oder HOLD.
@@ -85,8 +86,8 @@ def evaluate_open_position(position: dict[str, Any], df: pd.DataFrame) -> dict[s
     entry_price = float(position.get("entry_price", 0.0))
     highest_price = max(float(position.get("highest_price", entry_price)), price)
 
-    stop_loss = _stop_loss_price(entry_price)
-    trailing = _trailing_stop_price(highest_price)
+    stop_loss = _stop_loss_price(entry_price, profile_name=profile_name)
+    trailing = _trailing_stop_price(highest_price, profile_name=profile_name)
 
     if price <= stop_loss:
         return {
@@ -128,6 +129,7 @@ def backtest_symbol_candles(
     symbol: str,
     df: pd.DataFrame,
     capital_eur: float = 200.0,
+    profile_name: str | None = None,
 ) -> dict[str, Any]:
     """
     Candle-by-Candle Backtest für EIN Symbol.
@@ -165,8 +167,8 @@ def backtest_symbol_candles(
         if position is not None:
             position.highest_price = max(position.highest_price, price)
 
-            stop_loss = _stop_loss_price(position.entry_price)
-            trailing = _trailing_stop_price(position.highest_price)
+            stop_loss = _stop_loss_price(position.entry_price, profile_name=profile_name)
+            trailing = _trailing_stop_price(position.highest_price, profile_name=profile_name)
 
             sell_reason = None
             if price <= stop_loss:

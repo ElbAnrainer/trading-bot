@@ -211,7 +211,7 @@ def run_mini_trading_system(
         if df is None or df.empty:
             continue
 
-        check = evaluate_open_position(pos, df)
+        check = evaluate_open_position(pos, df, profile_name=resolved_profile)
         price = float(check.get("price", 0.0))
         time_str = check.get("time")
         days_open = _days_open(pos)
