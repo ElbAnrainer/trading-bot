@@ -2,6 +2,7 @@ from config import BASE_CURRENCY
 import shutil
 
 from security_identifiers import identifiers_text
+from text_tables import format_table_row, format_table_separator, pad_visible, visible_len
 
 
 try:
@@ -47,9 +48,9 @@ def _subline(char="-"):
 
 def _format_row(text):
     text = str(text)
-    if len(text) > LINE_WIDTH:
-        return text[:LINE_WIDTH]
-    return text.ljust(LINE_WIDTH)
+    if visible_len(text) > LINE_WIDTH:
+        return pad_visible(text, LINE_WIDTH)
+    return pad_visible(text, LINE_WIDTH)
 
 
 def _print_block(title, lines, line_char="="):
@@ -133,7 +134,19 @@ def print_ranking(results):
         _print_block(_headline("PERFORMANCE-RANKING"), ["Keine Backtest-Ergebnisse vorhanden."])
         return
 
+    columns = [
+        ("Nr", 3, ">"),
+        ("Sym", 6, "<"),
+        ("Unternehmen", 22, "<"),
+        ("P/L EUR", 12, ">"),
+        ("P/L %", 7, ">"),
+        ("Treffer", 8, ">"),
+        ("Trades", 6, ">"),
+        ("Signal", 6, "<"),
+    ]
     lines = []
+    lines.append(format_table_row(columns))
+    lines.append(format_table_separator(columns))
     for i, r in enumerate(results, 1):
         pnl = float(r.get("pnl_eur", 0.0))
         pnl_pct = float(r.get("pnl_pct_eur", 0.0))
@@ -142,13 +155,20 @@ def print_ranking(results):
         symbol = r.get("symbol", "-")
         company = r.get("company_name", symbol)
         signal = r.get("signal", "")
-        signal_text = f" | {colorize_signal(signal)}" if signal else ""
-
-        prefix = "★ " if PRO_MODE and i == 1 else ""
+        rank_label = f"★{i}" if PRO_MODE and i == 1 else f"{i}."
         lines.append(
-            f"{prefix}{i:>2}. {symbol:<6} {company[:28]:<28} | "
-            f"P/L: {colorize(pnl, f'{pnl:.2f} EUR'):>12} | "
-            f"{pnl_pct:>7.2f}% | Treffer: {hit_rate:>6.2f}% | Trades: {trades:>3}{signal_text}"
+            format_table_row(
+                [
+                    (rank_label, 3, ">"),
+                    (symbol, 6, "<"),
+                    (company, 22, "<"),
+                    (colorize(pnl, f"{pnl:.2f}"), 12, ">"),
+                    (f"{pnl_pct:.2f}%", 7, ">"),
+                    (f"{hit_rate:.2f}%", 8, ">"),
+                    (str(trades), 6, ">"),
+                    (colorize_signal(signal or "-"), 6, "<"),
+                ]
+            )
         )
         lines.append(_identifier_line(r.get("isin"), r.get("wkn")))
 
@@ -178,8 +198,15 @@ def print_portfolio(portfolio):
         _print_block(_headline("SIMULIERTES DEPOT"), ["Keine Positionen im simulierten Depot."])
         return
 
+    columns = [
+        ("Sym", 6, "<"),
+        ("Unternehmen", 22, "<"),
+        ("Qty", 5, ">"),
+        ("Wert EUR", 12, ">"),
+        ("Wert nativ", 14, ">"),
+    ]
     total = 0.0
-    lines = []
+    lines = [format_table_row(columns), format_table_separator(columns)]
 
     for symbol, pos in portfolio.items():
         qty = float(pos["qty"])
@@ -187,17 +214,23 @@ def print_portfolio(portfolio):
         value = qty * price_eur
         total += value
         company = pos.get("company_name", symbol)
+        native_value_text = "-"
 
-        if pos["native_currency"] == BASE_CURRENCY:
-            lines.append(
-                f"{symbol:<6} {company[:28]:<28} | Qty: {int(qty):>4} | Wert: {colorize(value, f'{value:.2f} EUR')}"
-            )
-        else:
+        if pos["native_currency"] != BASE_CURRENCY:
             native_value = qty * float(pos["price_native"])
-            lines.append(
-                f"{symbol:<6} {company[:22]:<22} | Qty: {int(qty):>4} | "
-                f"Wert: {colorize(value, f'{value:.2f} EUR')} | {native_value:.2f} {pos['native_currency']}"
+            native_value_text = f"{native_value:.2f} {pos['native_currency']}"
+
+        lines.append(
+            format_table_row(
+                [
+                    (symbol, 6, "<"),
+                    (company, 22, "<"),
+                    (str(int(qty)), 5, ">"),
+                    (colorize(value, f"{value:.2f}"), 12, ">"),
+                    (native_value_text, 14, ">"),
+                ]
             )
+        )
         lines.append(_identifier_line(pos.get("isin"), pos.get("wkn")))
 
     lines.append(_subline("-"))
@@ -211,15 +244,34 @@ def print_future_candidates(candidates):
         _print_block(_headline("TOP-KANDIDATEN FÜR DIE BEOBACHTUNG"), ["Keine Kandidaten gefunden."])
         return
 
+    columns = [
+        ("Nr", 3, ">"),
+        ("Sym", 6, "<"),
+        ("Unternehmen", 20, "<"),
+        ("Signal", 6, "<"),
+        ("Score", 7, ">"),
+        ("Stärke", 6, "<"),
+        ("Risiko", 6, "<"),
+    ]
     lines = []
+    lines.append(format_table_row(columns))
+    lines.append(format_table_separator(columns))
     for i, c in enumerate(candidates, 1):
         company = c.get("company_name", c["symbol"])
         reasons = ", ".join(c.get("reasons", [])) if c.get("reasons") else "keine klare Begründung"
 
         lines.append(
-            f"{i:>2}. {c['symbol']:<6} {company[:25]:<25} | "
-            f"{colorize_signal(c['future_signal']):<6} | "
-            f"Score: {c['score']:>6.2f} | Stärke: {c['strength']:<6} | Risiko: {c['risk']:<6}"
+            format_table_row(
+                [
+                    (f"{i}.", 3, ">"),
+                    (c["symbol"], 6, "<"),
+                    (company, 20, "<"),
+                    (colorize_signal(c["future_signal"]), 6, "<"),
+                    (f"{c['score']:.2f}", 7, ">"),
+                    (c["strength"], 6, "<"),
+                    (c["risk"], 6, "<"),
+                ]
+            )
         )
         lines.append(_identifier_line(c.get("isin"), c.get("wkn")))
         lines.append(f"    Grund: {reasons}")
@@ -235,13 +287,32 @@ def print_future_candidates_compact(candidates):
         _print_block(_headline("TOP-KANDIDATEN FÜR DIE BEOBACHTUNG"), ["Keine Kandidaten gefunden."])
         return
 
+    columns = [
+        ("Nr", 3, ">"),
+        ("Sym", 6, "<"),
+        ("Unternehmen", 20, "<"),
+        ("Signal", 6, "<"),
+        ("Score", 7, ">"),
+        ("Stärke", 6, "<"),
+        ("Risiko", 6, "<"),
+    ]
     lines = []
+    lines.append(format_table_row(columns))
+    lines.append(format_table_separator(columns))
     for i, c in enumerate(candidates, 1):
         company = c.get("company_name", c["symbol"])
         lines.append(
-            f"{i:>2}. {c['symbol']:<6} {company[:25]:<25} | "
-            f"{c['future_signal']:<5} | Score: {c['score']:>6.2f} | "
-            f"Stärke: {c['strength']:<6} | Risiko: {c['risk']:<6}"
+            format_table_row(
+                [
+                    (f"{i}.", 3, ">"),
+                    (c["symbol"], 6, "<"),
+                    (company, 20, "<"),
+                    (c["future_signal"], 6, "<"),
+                    (f"{c['score']:.2f}", 7, ">"),
+                    (c["strength"], 6, "<"),
+                    (c["risk"], 6, "<"),
+                ]
+            )
         )
         lines.append(_identifier_line(c.get("isin"), c.get("wkn")))
 
@@ -305,20 +376,33 @@ def print_closed_trades(symbol, name, isin, wkn, trades, currency):
     lines = [
         f"{name}",
         f"ISIN: {isin} | WKN: {wkn} | Währung: {currency}",
-        _subline("-"),
     ]
+    columns = [
+        ("Kauf", 16, "<"),
+        ("Verkauf", 16, "<"),
+        ("P/L EUR", 12, ">"),
+        ("Grund", 24, "<"),
+    ]
+    lines.append(format_table_row(columns))
+    lines.append(format_table_separator(columns))
 
     for t in trades:
         pnl_eur = float(t.get("pnl_eur", 0.0))
         pnl_str = colorize(pnl_eur, f"{pnl_eur:.2f} EUR")
         buy_time = t.get("buy_time", "-")
         sell_time = t.get("sell_time", "-")
-        reason = t.get("reason")
+        reason = t.get("reason", "-")
 
-        if reason:
-            lines.append(f"{buy_time} -> {sell_time} | {pnl_str} | Grund: {reason}")
-        else:
-            lines.append(f"{buy_time} -> {sell_time} | {pnl_str}")
+        lines.append(
+            format_table_row(
+                [
+                    (buy_time, 16, "<"),
+                    (sell_time, 16, "<"),
+                    (pnl_str, 12, ">"),
+                    (reason, 24, "<"),
+                ]
+            )
+        )
 
     _print_block(_headline(f"DETAILS {symbol}"), lines)
 
@@ -370,14 +454,33 @@ def print_buy_overview(candidates):
         _print_block(_headline("BEOBACHTUNGSSIGNALE"), ["Keine BUY/WATCH Kandidaten gefunden."])
         return
 
+    columns = [
+        ("Nr", 3, ">"),
+        ("Sym", 6, "<"),
+        ("Unternehmen", 20, "<"),
+        ("Signal", 6, "<"),
+        ("Score", 7, ">"),
+        ("Stärke", 6, "<"),
+        ("Risiko", 6, "<"),
+    ]
     lines = []
+    lines.append(format_table_row(columns))
+    lines.append(format_table_separator(columns))
     for i, c in enumerate(filtered, 1):
         company = c.get("company_name", c["symbol"])
-        prefix = "► " if PRO_MODE and c["future_signal"] == "BUY" else ""
+        rank_label = f"►{i}" if PRO_MODE and c["future_signal"] == "BUY" else f"{i}."
         lines.append(
-            f"{prefix}{i:>2}. {c['symbol']:<6} {company[:25]:<25} | "
-            f"{colorize_signal(c['future_signal'])} | "
-            f"Score: {c['score']:.2f} | Stärke: {c['strength']} | Risiko: {c['risk']}"
+            format_table_row(
+                [
+                    (rank_label, 3, ">"),
+                    (c["symbol"], 6, "<"),
+                    (company, 20, "<"),
+                    (colorize_signal(c["future_signal"]), 6, "<"),
+                    (f"{c['score']:.2f}", 7, ">"),
+                    (c["strength"], 6, "<"),
+                    (c["risk"], 6, "<"),
+                ]
+            )
         )
         lines.append(_identifier_line(c.get("isin"), c.get("wkn")))
 

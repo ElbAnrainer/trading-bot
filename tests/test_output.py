@@ -1,3 +1,5 @@
+import output as output_mod
+
 from output import (
     print_summary_only,
     print_ranking,
@@ -11,6 +13,11 @@ from output import (
     print_buy_overview,
     print_simulation_notice,
 )
+from text_tables import strip_ansi
+
+
+def _pipe_positions(text):
+    return [idx for idx, char in enumerate(text) if char == "|"]
 
 
 def test_print_summary_only_outputs_expected_text(capsys):
@@ -56,6 +63,48 @@ def test_print_ranking_outputs_symbols(capsys):
     assert "US0378331005" in captured.out
     assert "865985" in captured.out
     assert "SAP" in captured.out
+
+
+def test_print_ranking_keeps_columns_aligned_in_pro_mode(capsys):
+    results = [
+        {
+            "symbol": "AAPL",
+            "company_name": "Apple Inc.",
+            "isin": "US0378331005",
+            "wkn": "865985",
+            "pnl_eur": 120.0,
+            "pnl_pct_eur": 1.2,
+            "hit_rate_pct": 61.5,
+            "trade_count": 5,
+            "signal": "BUY",
+        },
+        {
+            "symbol": "SAP",
+            "company_name": "SAP SE",
+            "isin": "DE0007164600",
+            "wkn": "716460",
+            "pnl_eur": -20.0,
+            "pnl_pct_eur": -0.2,
+            "hit_rate_pct": 48.0,
+            "trade_count": 3,
+            "signal": "SELL",
+        },
+    ]
+
+    output_mod.set_pro_mode(True)
+    try:
+        print_ranking(results)
+    finally:
+        output_mod.set_pro_mode(False)
+
+    lines = [strip_ansi(line) for line in capsys.readouterr().out.splitlines()]
+    header = next(line for line in lines if "Unternehmen" in line and "P/L EUR" in line)
+    rows = [line for line in lines if "Apple Inc." in line or "SAP SE" in line]
+    expected = _pipe_positions(header)
+
+    assert expected
+    assert rows
+    assert all(_pipe_positions(line) == expected for line in rows)
 
 
 def test_print_future_candidates_outputs_reasons(capsys):
@@ -120,6 +169,44 @@ def test_print_portfolio_outputs_positions(capsys):
     assert "Apple Inc." in captured.out
     assert "US0378331005" in captured.out
     assert "Depotwert" in captured.out
+
+
+def test_print_portfolio_keeps_columns_aligned_in_pro_mode(capsys):
+    portfolio = {
+        "AAPL": {
+            "qty": 10,
+            "price_eur": 100.0,
+            "price_native": 110.0,
+            "native_currency": "USD",
+            "company_name": "Apple Inc.",
+            "isin": "US0378331005",
+            "wkn": "865985",
+        },
+        "SAP": {
+            "qty": 5,
+            "price_eur": 200.0,
+            "price_native": 200.0,
+            "native_currency": "EUR",
+            "company_name": "SAP SE",
+            "isin": "DE0007164600",
+            "wkn": "716460",
+        },
+    }
+
+    output_mod.set_pro_mode(True)
+    try:
+        print_portfolio(portfolio)
+    finally:
+        output_mod.set_pro_mode(False)
+
+    lines = [strip_ansi(line) for line in capsys.readouterr().out.splitlines()]
+    header = next(line for line in lines if "Unternehmen" in line and "Wert EUR" in line)
+    rows = [line for line in lines if "Apple Inc." in line or "SAP SE" in line]
+    expected = _pipe_positions(header)
+
+    assert expected
+    assert rows
+    assert all(_pipe_positions(line) == expected for line in rows)
 
 
 def test_print_portfolio_outputs_empty_message(capsys):

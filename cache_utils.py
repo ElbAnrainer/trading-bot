@@ -29,12 +29,14 @@ def _save_json(path, data):
     os.replace(tmp_path, path)
 
 
-def get_cached_metadata(symbol, loader_func):
+def get_cached_metadata(symbol, loader_func, refresh_predicate=None):
     symbol = str(symbol).strip().upper()
     cache = _load_json(METADATA_CACHE_FILE)
 
     if symbol in cache:
-        return cache[symbol]
+        cached = cache[symbol]
+        if refresh_predicate is None or not refresh_predicate(cached):
+            return cached
 
     meta = loader_func(symbol) or {}
     if not isinstance(meta, dict):
@@ -45,15 +47,16 @@ def get_cached_metadata(symbol, loader_func):
     return meta
 
 
-def preload_metadata(symbols, loader_func):
+def preload_metadata(symbols, loader_func, refresh_predicate=None):
     cache = _load_json(METADATA_CACHE_FILE)
     updated = False
     result = {}
 
     for raw_symbol in symbols:
         symbol = str(raw_symbol).strip().upper()
-        if symbol in cache:
-            result[symbol] = cache[symbol]
+        cached = cache.get(symbol)
+        if cached is not None and (refresh_predicate is None or not refresh_predicate(cached)):
+            result[symbol] = cached
             continue
 
         meta = loader_func(symbol) or {}

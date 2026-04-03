@@ -72,6 +72,33 @@ FX_TTL_SECONDS = 3600
 _LIVE_INITIALIZED = False
 
 
+def _metadata_needs_identifier_refresh(meta):
+    return (str(meta.get("isin", "")).strip() in ("", "-")) or (
+        str(meta.get("wkn", "")).strip() in ("", "-")
+    )
+
+
+def _refresh_metadata_for_symbol(symbol):
+    return get_cached_metadata(
+        symbol,
+        load_ticker_metadata,
+        refresh_predicate=_metadata_needs_identifier_refresh,
+    )
+
+
+def _refresh_item_identifiers(item, metadata_cache):
+    symbol = item.get("symbol")
+    if not symbol:
+        return item
+
+    meta = _refresh_metadata_for_symbol(symbol)
+    metadata_cache[symbol] = meta
+    item["company_name"] = meta.get("name", item.get("company_name", symbol))
+    item["isin"] = meta.get("isin", item.get("isin", "-"))
+    item["wkn"] = meta.get("wkn", item.get("wkn", "-"))
+    return item
+
+
 def _fit_text(text, width):
     text = str(text or "")
     if len(text) <= width:
@@ -619,6 +646,8 @@ def run_analysis(
 
     future_candidates = build_future_candidates(analyzed, RECOMMENDATION_TOP_N)
     future_candidates = _enrich_with_company_names(future_candidates, metadata_cache)
+    future_candidates = [_refresh_item_identifiers(item, metadata_cache) for item in future_candidates]
+    diagnostics_to_print = [_refresh_item_identifiers(item, metadata_cache) for item in diagnostics_to_print]
 
     screened = [x for x in analyzed if x["is_candidate"]]
     screened.sort(
@@ -665,7 +694,9 @@ def run_analysis(
             if df is None or df.empty:
                 continue
 
-            meta = metadata_cache.get(symbol) or get_cached_metadata(symbol, load_ticker_metadata)
+            meta = metadata_cache.get(symbol) or _refresh_metadata_for_symbol(symbol)
+            if _metadata_needs_identifier_refresh(meta):
+                meta = _refresh_metadata_for_symbol(symbol)
             metadata_cache[symbol] = meta
             native_currency = meta.get("currency", "USD")
 

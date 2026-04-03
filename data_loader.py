@@ -6,6 +6,7 @@ import pandas as pd
 import yfinance as yf
 
 from config import FX_FALLBACK_RATES_TO_EUR, FX_SYMBOL, UNIVERSE_SOURCES
+from identifier_lookup import resolve_identifiers
 
 
 SNP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -314,7 +315,8 @@ def fallback_rate_to_eur(currency):
 def load_ticker_metadata(symbol):
     """
     Holt Name / ISIN / Währung / einfache Fundamentaldaten online über yfinance.
-    WKN ist bei Yahoo/yfinance oft nicht verlässlich verfügbar und bleibt '-'.
+    Identifier werden zusätzlich über robuste Web-Fallbacks aufgelöst, weil
+    Yahoo/yfinance bei ISIN/WKN inkonsistent sein kann.
     """
     try:
         ticker = yf.Ticker(symbol)
@@ -358,17 +360,17 @@ def load_ticker_metadata(symbol):
             "return_on_equity": info.get("returnOnEquity"),
         }
 
-    try:
-        ticker_isin = ticker.isin
-        if ticker_isin:
-            isin = ticker_isin
-    except Exception:
-        pass
+    identifiers = resolve_identifiers(
+        symbol=symbol,
+        company_name=name,
+        current_isin=isin,
+        current_wkn=wkn,
+    )
 
     return {
         "name": name,
-        "isin": isin,
-        "wkn": wkn if wkn else "-",
+        "isin": identifiers["isin"],
+        "wkn": identifiers["wkn"],
         "currency": (currency or "USD").upper(),
         "fundamentals": fundamentals,
     }

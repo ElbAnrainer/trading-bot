@@ -17,6 +17,7 @@ from config import (
     ensure_reports_dir,
 )
 from performance import analyze_performance
+from text_tables import format_table_row, format_table_separator
 
 
 REPORTS_DIR = DEFAULT_REPORTS_DIR
@@ -106,11 +107,26 @@ def _build_text_report(report):
     )
 
     if report["top_symbols"]:
+        columns = [
+            ("SYM", 6, "<"),
+            ("ISIN", 12, "<"),
+            ("WKN", 6, "<"),
+            ("ANZAHL", 6, ">"),
+            ("NAME", 24, "<"),
+        ]
+        lines.append(format_table_row(columns))
+        lines.append(format_table_separator(columns))
         for item in report["top_symbols"]:
             lines.append(
-                f"{item['symbol']} ({item.get('company', item['symbol'])}) | "
-                f"ISIN: {item.get('isin', '-')} | WKN: {item.get('wkn', '-')} | "
-                f"Anzahl: {item.get('count', 0)}"
+                format_table_row(
+                    [
+                        (item["symbol"], 6, "<"),
+                        (item.get("isin", "-"), 12, "<"),
+                        (item.get("wkn", "-"), 6, "<"),
+                        (str(item.get("count", 0)), 6, ">"),
+                        (item.get("company", item["symbol"]), 24, "<"),
+                    ]
+                )
             )
     else:
         lines.append("Keine Top-Aktien verfügbar.")

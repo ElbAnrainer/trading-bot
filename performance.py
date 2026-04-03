@@ -4,6 +4,8 @@ from collections import defaultdict
 from statistics import mean
 
 from config import TRADING_JOURNAL_CSV
+from identifier_lookup import resolve_identifiers
+from journal import backfill_missing_identifiers
 from terminal_ui import box, colorize
 from live_table import run_live_table
 
@@ -35,7 +37,14 @@ def _to_float(v, d=0.0):
         return d
 
 
+def _resolve_identifiers(symbol, company):
+    return resolve_identifiers(symbol=symbol, company_name=company)
+
+
 def _load():
+    if os.path.exists(TRADING_JOURNAL_CSV):
+        backfill_missing_identifiers(_resolve_identifiers)
+
     for p in JOURNAL_PATHS:
         if os.path.exists(p):
             with open(p, newline="", encoding="utf-8") as f:
