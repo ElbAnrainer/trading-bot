@@ -470,6 +470,12 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
 
     cfg = profile.get("config", {})
     analysis_generated_at = analysis.get("generated_at") or state.get("updated_at") or data.get("timestamp")
+    analysis_source = _analysis_source_label(str(analysis.get("source", "none")))
+    analysis_results_count = len(analysis.get("current_results", []))
+    analysis_candidates_count = len(analysis.get("future_candidates", []))
+    analysis_orders_count = len(analysis.get("orders", []))
+    state_positions_count = state.get("positions", 0)
+    state_updated_at = state.get("updated_at") or "-"
 
     html = f"""<!DOCTYPE html>
 <html lang="de">
@@ -545,10 +551,11 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
     </div>
 
     <div class="card">
-      <h2>Aktive Analyse</h2>
-      <p><strong>Quelle:</strong> {_html_escape(_analysis_source_label(str(analysis.get('source', 'none'))))}</p>
+      <h2>Aktueller Analyse-Lauf</h2>
+      <p class="muted">Diese Werte stammen aus dem letzten frischen Analyse-Lauf und nicht aus dem historischen Journal.</p>
+      <p><strong>Quelle:</strong> {_html_escape(analysis_source)}</p>
       <p><strong>Zeitraum:</strong> {_html_escape(analysis.get('period', '-'))} | <strong>Intervall:</strong> {_html_escape(analysis.get('interval', '-'))}</p>
-      <p><strong>Ergebnisse:</strong> {_html_escape(len(analysis.get('current_results', [])))} | <strong>Kandidaten:</strong> {_html_escape(len(analysis.get('future_candidates', [])))} | <strong>Orders:</strong> {_html_escape(len(analysis.get('orders', [])))}</p>
+      <p><strong>Ergebnisse:</strong> {_html_escape(analysis_results_count)} | <strong>Kandidaten:</strong> {_html_escape(analysis_candidates_count)} | <strong>Orders:</strong> {_html_escape(analysis_orders_count)}</p>
     </div>
 
     <div class="card">
@@ -578,24 +585,40 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
     </div>
 
     <div class="card">
-      <h2>Kennzahlen</h2>
+      <h2>Historische Performance</h2>
+      <p class="muted">Diese Kennzahlen werden aus dem persistierten Journal und dem selbstlernenden Score abgeleitet.</p>
+      <div class="grid">
+        <div class="kpi"><div class="label">Geschlossene Trades</div><div class="value">{int(perf['closed_trades'])}</div></div>
+        <div class="kpi"><div class="label">Gewinntrades</div><div class="value">{int(perf['winning_trades'])}</div></div>
+        <div class="kpi"><div class="label">Verlusttrades</div><div class="value">{int(perf['losing_trades'])}</div></div>
+        <div class="kpi"><div class="label">Trefferquote</div><div class="value">{float(perf['hit_rate']):.2f}%</div></div>
+        <div class="kpi"><div class="label">Realisiert</div><div class="value">{float(perf['realized_pnl']):,.2f} EUR</div></div>
+        <div class="kpi"><div class="label">Ø Trade P/L</div><div class="value">{float(perf['avg_trade_pnl']):,.2f} EUR</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Mini-System / Depot-State</h2>
+      <p class="muted">Diese Werte kommen aus dem persistierten Zustandsfile des Mini-Systems.</p>
       <div class="grid">
         <div class="kpi"><div class="label">Cash</div><div class="value">{float(state['cash_eur']):,.2f} EUR</div></div>
         <div class="kpi"><div class="label">Investiert</div><div class="value">{float(state['total_invested_eur']):,.2f} EUR</div></div>
         <div class="kpi"><div class="label">Equity</div><div class="value">{float(state['last_equity_eur']):,.2f} EUR</div></div>
         <div class="kpi"><div class="label">Peak Equity</div><div class="value">{float(state['peak_equity_eur']):,.2f} EUR</div></div>
         <div class="kpi"><div class="label">Drawdown</div><div class="value">{float(state['drawdown_pct']):.2f}%</div></div>
-        <div class="kpi"><div class="label">Historische Trefferquote</div><div class="value">{float(perf['hit_rate']):.2f}%</div></div>
+        <div class="kpi"><div class="label">Offene Positionen</div><div class="value">{int(state_positions_count)}</div></div>
       </div>
+      <p class="muted">State-Update: {_html_escape(state_updated_at)}</p>
     </div>
 
     <div class="card">
-      <h2>Risk</h2>
+      <h2>Risikoprofil</h2>
       <p>Max Position: {float(risk.get('max_position_pct', 0.0)) * 100:.0f}% | Stop-Loss: {float(risk.get('stop_loss_pct', 0.0)) * 100:.0f}% | Trailing Stop: {float(risk.get('trailing_stop_pct', 0.0)) * 100:.0f}% | Max Drawdown: {float(risk.get('max_drawdown_pct', 0.0)) * 100:.0f}%</p>
     </div>
 
     <div class="card">
       <h2>Aktuelle Analyse-Ergebnisse</h2>
+      <p class="muted">Backtest- und Signalsicht des aktuellen Laufs.</p>
       <table>
         <thead>
           <tr>
@@ -617,6 +640,7 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
 
     <div class="card">
       <h2>Aktuelle Kaufkandidaten</h2>
+      <p class="muted">Vorauswahl aus dem aktuellen Lauf vor der eigentlichen Handelsplanung.</p>
       <table>
         <thead>
           <tr>
@@ -637,6 +661,7 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
 
     <div class="card">
       <h2>{_html_escape(plan_title)}</h2>
+      <p class="muted">Dieser Abschnitt zeigt bevorzugt den aktuellen Trading-Plan; ohne frischen Lauf faellt er auf historische Portfolio-Gewichtung zurueck.</p>
       <table>
         <thead>
           <tr>
@@ -657,6 +682,7 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
 
     <div class="card">
       <h2>Simuliertes Depot (aktueller Lauf)</h2>
+      <p class="muted">Virtuelles Analyse-Depot aus dem letzten CLI-Lauf, getrennt vom persistierten Mini-System-State.</p>
       <table>
         <thead>
           <tr>
@@ -676,7 +702,8 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
     </div>
 
     <div class="card">
-      <h2>Letzte Events</h2>
+      <h2>Letzte Mini-System-Events</h2>
+      <p class="muted">Persistierte Historie des Mini-Systems und nicht der aktuelle Analyse-Lauf.</p>
       <table>
         <thead>
           <tr>

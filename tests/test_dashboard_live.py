@@ -111,7 +111,9 @@ def test_build_live_terminal_lines_uses_two_columns_on_wide_terminals(monkeypatc
     lines = dl._build_live_terminal_lines(_sample_data(), "2026-04-03 10:30:00", width=160)
     clean = [dl._strip_ansi(line) for line in lines]
 
-    assert any("AKTIVES PROFIL" in line and "PORTFOLIO-PLAN" in line for line in clean)
+    assert any("AKTIVER ANALYSE-LAUF" in line or "AKTUELLER ANALYSE-LAUF" in line for line in clean)
+    assert any("HISTORISCHE PERFORMANCE" in line for line in clean)
+    assert any("MINI-SYSTEM-STATUS" in line for line in clean)
     assert any("US0378331005" in line for line in clean)
     assert max(len(line) for line in clean) <= 160
 
@@ -136,9 +138,9 @@ def test_build_live_terminal_lines_stacks_sections_on_narrow_terminals(monkeypat
     clean = [dl._strip_ansi(line) for line in lines]
 
     profile_idx = next(i for i, line in enumerate(clean) if "AKTIVES PROFIL" in line)
-    portfolio_idx = next(i for i, line in enumerate(clean) if "PORTFOLIO-PLAN" in line)
+    portfolio_idx = next(i for i, line in enumerate(clean) if "AKTUELLER TRADING-PLAN" in line)
 
     assert portfolio_idx > profile_idx
-    assert not any("AKTIVES PROFIL" in line and "PORTFOLIO-PLAN" in line for line in clean)
+    assert not any("AKTIVES PROFIL" in line and "AKTUELLER TRADING-PLAN" in line for line in clean)
     assert any("865985" in line for line in clean)
     assert max(len(line) for line in clean) <= 100

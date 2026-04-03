@@ -165,32 +165,60 @@ def _profile_rows(profile_name: str, cfg: dict[str, Any]) -> list[str]:
     ]
 
 
-def _systemstatus_rows(data: dict[str, Any]) -> list[str]:
+def _analysis_source_text(source: Any) -> str:
+    mapping = {
+        "current_run": "aktueller Lauf",
+        "latest_run": "letzter Snapshot",
+        "none": "keine aktuelle Analyse",
+    }
+    return mapping.get(str(source), str(source))
+
+
+def _analysis_status_rows(data: dict[str, Any]) -> list[str]:
     analysis = data.get("analysis", {})
-    perf = data["performance"]
-    state = data["state"]
 
     return [
-        f"Cash: {_fmt_money(state['cash_eur'])}",
-        f"Investiert: {_fmt_money(state['total_invested_eur'])}",
-        f"Equity: {_fmt_money(state['last_equity_eur'])}",
-        f"Peak: {_fmt_money(state['peak_equity_eur'])}",
-        f"Drawdown: {_fmt_pct(state['drawdown_pct'])} | Positionen: {state['positions']}",
-        f"Trades: {perf['closed_trades']} | Trefferquote: {_fmt_pct(perf['hit_rate'])}",
-        f"P/L: {_colorize_number(perf['realized_pnl'], _fmt_money(perf['realized_pnl']))}",
-        f"O Trade: {_colorize_number(perf['avg_trade_pnl'], _fmt_money(perf['avg_trade_pnl']))}",
+        f"Quelle: {_analysis_source_text(analysis.get('source'))}",
         (
             f"Analyse: {analysis.get('period', '-')} / {analysis.get('interval', '-')} | "
             f"Ergebnisse: {len(analysis.get('current_results', []))} | "
             f"Plan: {len(analysis.get('trading_plan', []))}"
         ),
-        f"Updated: {analysis.get('generated_at') or state.get('updated_at') or '-'}",
+        f"Kandidaten: {len(analysis.get('future_candidates', []))} | Orders: {len(analysis.get('orders', []))}",
+        f"Updated: {analysis.get('generated_at') or '-'}",
     ]
 
 
-def _top_scores_rows(data: dict[str, Any]) -> list[str]:
-    current_results = data.get("analysis", {}).get("current_results", [])
+def _historical_performance_rows(data: dict[str, Any]) -> list[str]:
     ranking = data["performance"]["ranking"]
+    perf = data["performance"]
+    rows = [
+        f"Trades: {perf['closed_trades']} | Trefferquote: {_fmt_pct(perf['hit_rate'])}",
+        f"Realisiert: {_colorize_number(perf['realized_pnl'], _fmt_money(perf['realized_pnl']))}",
+        f"O Trade: {_colorize_number(perf['avg_trade_pnl'], _fmt_money(perf['avg_trade_pnl']))}",
+        "--- Top Journal-Scores ---",
+    ]
+
+    if not ranking:
+        rows.append("Keine historischen Ranking-Daten verfugbar.")
+        return rows
+
+    rows.append(f"{'SYM':<6}{'BONUS':>10}{'HIT':>8}{'O P/L':>12}{'TRD':>6}")
+    for row in ranking[:4]:
+        bonus_text = f"{float(row.get('bonus', 0.0)):+10.2f}"
+        bonus = _colorize_number(row.get("bonus", 0.0), bonus_text)
+        hit = f"{float(row.get('hit_rate', 0.0)):>7.1f}%"
+        avg_pnl_text = f"{float(row.get('avg_pnl', 0.0)):>12,.2f}"
+        avg_pnl = _colorize_number(row.get("avg_pnl", 0.0), avg_pnl_text)
+        trades = f"{int(row.get('trades', 0)):>6}"
+        rows.append(f"{_fit(row.get('symbol', '-'), 6):<6}{bonus}{hit}{avg_pnl}{trades}")
+        rows.append(f"  {identifiers_text(row.get('isin'), row.get('wkn'))}")
+
+    return rows
+
+
+def _analysis_result_rows(data: dict[str, Any]) -> list[str]:
+    current_results = data.get("analysis", {}).get("current_results", [])
 
     if current_results:
         rows = [f"{'SYM':<6}{'SIG':<6}{'P/L':>12}{'TRD':>6}{'SCORE':>10}"]
@@ -209,22 +237,7 @@ def _top_scores_rows(data: dict[str, Any]) -> list[str]:
             rows.append(f"  {identifiers_text(row.get('isin'), row.get('wkn'))}")
         return rows
 
-    rows = [f"{'SYM':<6}{'BONUS':>10}{'HIT':>8}{'O P/L':>12}{'TRD':>6}"]
-
-    if not ranking:
-        rows.append("Keine Ranking-Daten verfugbar.")
-        return rows
-
-    for row in ranking[:8]:
-        bonus_text = f"{float(row.get('bonus', 0.0)):+10.2f}"
-        bonus = _colorize_number(row.get("bonus", 0.0), bonus_text)
-        hit = f"{float(row.get('hit_rate', 0.0)):>7.1f}%"
-        avg_pnl_text = f"{float(row.get('avg_pnl', 0.0)):>12,.2f}"
-        avg_pnl = _colorize_number(row.get("avg_pnl", 0.0), avg_pnl_text)
-        trades = f"{int(row.get('trades', 0)):>6}"
-        rows.append(f"{_fit(row.get('symbol', '-'), 6):<6}{bonus}{hit}{avg_pnl}{trades}")
-        rows.append(f"  {identifiers_text(row.get('isin'), row.get('wkn'))}")
-
+    rows = ["Keine frischen Analyse-Ergebnisse verfugbar."]
     return rows
 
 
@@ -249,12 +262,21 @@ def _portfolio_plan_rows(data: dict[str, Any]) -> list[str]:
     return rows
 
 
-def _open_positions_rows(data: dict[str, Any]) -> list[str]:
+def _mini_system_rows(data: dict[str, Any]) -> list[str]:
+    state = data["state"]
     positions = data["state"]["open_positions"]
-    rows = [f"{'SYM':<7}{'ENTRY':>10}{'CURR':>10}{'SHARES':>10}{'INV':>11}"]
+    rows = [
+        f"Cash: {_fmt_money(state['cash_eur'])}",
+        f"Investiert: {_fmt_money(state['total_invested_eur'])}",
+        f"Equity: {_fmt_money(state['last_equity_eur'])}",
+        f"Peak: {_fmt_money(state['peak_equity_eur'])} | Drawdown: {_fmt_pct(state['drawdown_pct'])}",
+        f"Positionen: {state['positions']} | Updated: {state.get('updated_at') or '-'}",
+        "--- Offene Positionen ---",
+        f"{'SYM':<7}{'ENTRY':>10}{'CURR':>10}{'SHARES':>10}{'INV':>11}",
+    ]
 
     if not positions:
-        rows.append("Keine offenen Positionen.")
+        rows.append("Keine offenen Mini-System-Positionen.")
         return rows
 
     for sym, pos in positions.items():
@@ -343,24 +365,26 @@ def _build_live_terminal_lines(data: dict[str, Any], refreshed_at: str, width: i
 
         left_boxes = [
             _box("AKTIVES PROFIL", _profile_rows(profile_name, cfg), left_width),
-            _box("SYSTEMSTATUS", _systemstatus_rows(data), left_width),
-            _box("TOP SCORES", _top_scores_rows(data), left_width),
+            _box("AKTUELLER ANALYSE-LAUF", _analysis_status_rows(data), left_width),
+            _box("HISTORISCHE PERFORMANCE", _historical_performance_rows(data), left_width),
         ]
         right_boxes = [
-            _box("PORTFOLIO-PLAN", _portfolio_plan_rows(data), right_width),
-            _box("OFFENE POSITIONEN", _open_positions_rows(data), right_width),
-            _box("LETZTE EVENTS", _last_events_rows(data, right_width - 4), right_width),
+            _box("AKTUELLE ERGEBNISSE", _analysis_result_rows(data), right_width),
+            _box("AKTUELLER TRADING-PLAN", _portfolio_plan_rows(data), right_width),
+            _box("MINI-SYSTEM-STATUS", _mini_system_rows(data), right_width),
+            _box("LETZTE MINI-SYSTEM-EVENTS", _last_events_rows(data, right_width - 4), right_width),
         ]
         lines.extend(_merge_columns(_stack_boxes(left_boxes), _stack_boxes(right_boxes), left_width, right_width))
         return lines
 
     stacked_boxes = [
         _box("AKTIVES PROFIL", _profile_rows(profile_name, cfg), width),
-        _box("SYSTEMSTATUS", _systemstatus_rows(data), width),
-        _box("TOP SCORES", _top_scores_rows(data), width),
-        _box("PORTFOLIO-PLAN", _portfolio_plan_rows(data), width),
-        _box("OFFENE POSITIONEN", _open_positions_rows(data), width),
-        _box("LETZTE EVENTS", _last_events_rows(data, width - 4), width),
+        _box("AKTUELLER ANALYSE-LAUF", _analysis_status_rows(data), width),
+        _box("HISTORISCHE PERFORMANCE", _historical_performance_rows(data), width),
+        _box("AKTUELLE ERGEBNISSE", _analysis_result_rows(data), width),
+        _box("AKTUELLER TRADING-PLAN", _portfolio_plan_rows(data), width),
+        _box("MINI-SYSTEM-STATUS", _mini_system_rows(data), width),
+        _box("LETZTE MINI-SYSTEM-EVENTS", _last_events_rows(data, width - 4), width),
     ]
 
     for idx, box in enumerate(stacked_boxes):

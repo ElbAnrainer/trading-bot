@@ -74,7 +74,7 @@ def _patch_dashboard_dependencies(monkeypatch):
             "total_invested_eur": 0.0,
         },
     )
-    monkeypatch.setattr(dashboard, "risk_summary", lambda: {})
+    monkeypatch.setattr(dashboard, "risk_summary", lambda profile_name=None: {})
     monkeypatch.setattr(dashboard, "get_active_profile_name", lambda: "konservativ")
     monkeypatch.setattr(dashboard, "get_trading_config", lambda profile_name: {"max_positions": 4})
 
@@ -163,6 +163,9 @@ def test_build_dashboard_writes_html_with_current_analysis(monkeypatch, tmp_path
     dashboard.build_dashboard(analysis_result=_sample_analysis_result())
 
     html = (tmp_path / "dashboard_latest.html").read_text(encoding="utf-8")
+    assert "Aktueller Analyse-Lauf" in html
+    assert "Historische Performance" in html
+    assert "Mini-System / Depot-State" in html
     assert "Aktuelle Analyse-Ergebnisse" in html
     assert "NVIDIA Corporation" in html
     assert "US67066G1040" in html
