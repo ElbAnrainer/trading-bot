@@ -23,6 +23,7 @@ Wichtige Einstiegspunkte und Kernmodule:
 
 - `main.py` -> Haupt-CLI
 - `run.sh` -> lokaler Launcher / interaktiver Terminal-Flow
+- `terminal_ui.py` -> curses-basierte Terminal-Pro-Oberflaeche
 - `run_walk_forward.sh` -> kanonischer Walk-Forward-Skriptstart
 - `migrate_runtime_data.py` -> einmalige Migration alter Repo-Laufzeitdaten
 - `realistic_backtest.py` -> realistischer Portfolio-Backtest
@@ -62,6 +63,7 @@ Haeufige Validierungen:
 ```bash
 ./.venv/bin/python -m pytest -p no:cacheprovider -q
 env MPLCONFIGDIR=/tmp/mpl-trading-bot ./.venv/bin/python main.py --help
+env MPLCONFIGDIR=/tmp/mpl-trading-bot ./.venv/bin/python main.py --pro --fast -p 1mo -t 1 --no-pdf
 ```
 
 Wenn Tests oder CLI-Kommandos `matplotlib` importieren, ist
@@ -88,6 +90,8 @@ Berechtigungsprobleme zu vermeiden.
   denn, eine bewusste Migration ist Teil der Aenderung.
 - Bestehende Werte aus `config.py` und den Trading-Profilen nutzen, statt neue
   verteilte Konstanten einzufuehren.
+- Bei textbasierten Ausgaben Tabellen und Trenner sauber ausrichten; Spalten mit
+  `|` sollen auch mit ANSI-Farben lesbar und stabil bleiben.
 
 ## Trading- und Modellierungsgrenzen
 
@@ -138,9 +142,13 @@ Leser und Schreiber hinweg konsistent halten.
 
 ## Bekannte Stolperstellen
 
-- `walk_forward.py` ist das kanonische Walk-Forward-Modul.
-- `walkforward.py` ist ein Kompatibilitaets-Shim fuer alte Importe.
-- `run_walk_forward.sh` ist der kanonische Skriptname fuer den Walk-Forward-Lauf.
+- `walkforward.py` ist die integrierte Walk-Forward-Implementierung, die von
+  `main.py` verwendet wird.
+- `walk_forward.py` ist der Legacy-Reportpfad fuer bestehende Skripte und
+  GitHub-Workflows; dort entstehen die klassischen `walk_forward_latest.*`
+  Artefakte.
+- `run_walk_forward.sh` ist der kanonische Skriptname fuer den Legacy-
+  Walk-Forward-Reportlauf.
 - `run_walk_forwad.sh` ist ein Legacy-/Typo-Wrapper.
 - `performance.py` verwendet `portfolio.py`.
 - `porfolio.py` ist ein Legacy-/Typo-Shim auf `portfolio.py`.
