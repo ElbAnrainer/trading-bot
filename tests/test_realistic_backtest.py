@@ -140,13 +140,16 @@ def test_run_realistic_backtest_executes_single_profitable_trade(monkeypatch, tm
     latest_json = tmp_path / "realistic_backtest_latest.json"
     data = pd.DataFrame(
         {
-            "Close": [100.0, 110.0, 105.0],
-            "buy_signal": [True, False, False],
-            "sell_signal": [False, False, True],
-            "volatility_20": [0.02, 0.02, 0.02],
-            "momentum_20": [0.05, 0.05, 0.05],
+            "Open": [100.0, 100.0, 105.0, 105.0],
+            "High": [101.0, 111.0, 106.0, 106.0],
+            "Low": [99.0, 100.0, 104.0, 105.0],
+            "Close": [100.0, 110.0, 105.0, 105.0],
+            "buy_signal": [True, False, False, False],
+            "sell_signal": [False, False, True, False],
+            "volatility_20": [0.02, 0.02, 0.02, 0.02],
+            "momentum_20": [0.05, 0.05, 0.05, 0.05],
         },
-        index=pd.to_datetime(["2026-01-05", "2026-01-06", "2026-01-07"]),
+        index=pd.to_datetime(["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"]),
     )
 
     monkeypatch.setattr(rb, "REPORTS_DIR", str(tmp_path))
@@ -160,12 +163,15 @@ def test_run_realistic_backtest_executes_single_profitable_trade(monkeypatch, tm
     result = rb.run_realistic_backtest(period="1y")
 
     assert result["symbols"] == ["AAA"]
+    assert result["execution_model"]["entries"] == "next_bar_open_after_buy_signal"
     assert result["trade_count"] == 1
     assert result["win_rate_pct"] == 100.0
     assert result["final_equity"] == 1025.0
     assert result["total_return_pct"] == 2.5
     assert result["max_drawdown_pct"] == pytest.approx(2.38, abs=0.01)
-    assert len(result["equity_curve"]) == 3
+    assert len(result["equity_curve"]) == 4
+    assert result["trades"][0]["entry_date"] == "2026-01-06 00:00:00"
+    assert result["trades"][0]["exit_date"] == "2026-01-08 00:00:00"
     assert result["trades"][0]["reason"] == "SELL_SIGNAL"
     assert result["trades"][0]["pnl_eur"] == 25.0
 

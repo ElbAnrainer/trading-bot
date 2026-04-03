@@ -129,6 +129,55 @@ def _mark_to_market_equity(
     return equity
 
 
+def _mark_to_market_equity_at_open(
+    cash: float,
+    positions: dict[str, OpenPosition],
+    candle_rows: dict[str, pd.Series],
+) -> float:
+    equity = float(cash)
+    for symbol, pos in positions.items():
+        row = candle_rows.get(symbol)
+        price = pos.entry_price if row is None else _row_open_price(row, fallback=pos.entry_price)
+        equity += pos.shares * price
+    return equity
+
+
+def _row_open_price(row: pd.Series, fallback: float | None = None) -> float:
+    close_fallback = float(row["Close"]) if "Close" in row and pd.notna(row["Close"]) else 0.0
+    price = row.get("Open", close_fallback if fallback is None else fallback)
+    try:
+        value = float(price)
+        if pd.notna(value) and value > 0:
+            return value
+    except Exception:
+        pass
+    return close_fallback if fallback is None else float(fallback)
+
+
+def _row_high_price(row: pd.Series) -> float:
+    fallback = _row_open_price(row)
+    price = row.get("High", fallback)
+    try:
+        value = float(price)
+        if pd.notna(value) and value > 0:
+            return value
+    except Exception:
+        pass
+    return fallback
+
+
+def _row_low_price(row: pd.Series) -> float:
+    fallback = _row_open_price(row)
+    price = row.get("Low", fallback)
+    try:
+        value = float(price)
+        if pd.notna(value) and value > 0:
+            return value
+    except Exception:
+        pass
+    return fallback
+
+
 def _max_drawdown_pct(equity_curve: list[dict[str, Any]]) -> float:
     if not equity_curve:
         return 0.0
@@ -235,6 +284,11 @@ def run_realistic_backtest(
         "interval": interval,
         "profile_name": profile_name or get_active_profile_name(),
         "initial_capital": initial_capital,
+        "execution_model": {
+            "entries": "next_bar_open_after_buy_signal",
+            "signal_exits": "next_bar_open_after_sell_signal",
+            "protective_exits": "intrabar_stop_with_gap_open_fallback",
+        },
         "anti_overtrading": {
             "min_hold_bars": min_hold_bars,
             "cooldown_bars": cooldown_bars,
@@ -301,10 +355,13 @@ def run_realistic_backtest(
     total_slippage = 0.0
     last_exit_bar_by_symbol: dict[str, int] = {}
     trades_per_week: dict[str, int] = {}
+    pending_entries: dict[str, dict[str, Any]] = {}
+    pending_signal_exits: dict[str, dict[str, Any]] = {}
 
     for bar_index, ts in enumerate(calendar):
         candle_rows: dict[str, pd.Series] = {}
         new_trades_this_bar = 0
+        queued_entries_this_bar = 0
         week_key = _week_key(ts)
         trades_per_week.setdefault(week_key, 0)
 
@@ -312,34 +369,167 @@ def run_realistic_backtest(
             if ts in df.index:
                 candle_rows[symbol] = df.loc[ts]
 
+        for symbol in list(pending_signal_exits.keys()):
+            row = candle_rows.get(symbol)
+            pos = positions.get(symbol)
+            if row is None or pos is None:
+                if pos is None:
+                    del pending_signal_exits[symbol]
+                continue
+
+            open_price = _row_open_price(row, fallback=pos.entry_price)
+            exit_price = open_price * (1.0 - slippage_pct)
+            gross_value = pos.shares * exit_price
+            fee = gross_value * fee_pct
+            proceeds = gross_value - fee
+
+            slippage_cost = pos.shares * open_price - gross_value
+            total_fees += fee
+            total_slippage += max(0.0, slippage_cost)
+
+            pnl = proceeds - pos.invested_eur
+            cash += proceeds
+            last_exit_bar_by_symbol[symbol] = bar_index
+
+            trades.append(
+                {
+                    "symbol": symbol,
+                    "entry_date": pos.entry_date,
+                    "exit_date": str(ts),
+                    "entry_price": round(pos.entry_price, 4),
+                    "exit_price": round(exit_price, 4),
+                    "shares": round(pos.shares, 6),
+                    "invested_eur": round(pos.invested_eur, 2),
+                    "proceeds_eur": round(proceeds, 2),
+                    "pnl_eur": round(pnl, 2),
+                    "reason": pending_signal_exits[symbol]["reason"],
+                    "held_bars": bar_index - pos.entry_bar_index,
+                    "risk_amount_eur": round(pos.risk_amount_eur, 2),
+                }
+            )
+            del positions[symbol]
+            del pending_signal_exits[symbol]
+
+        for symbol, pending in sorted(
+            list(pending_entries.items()),
+            key=lambda item: (
+                float(item[1].get("score", 0.0)),
+                str(item[1].get("signal_time", "")),
+            ),
+            reverse=True,
+        ):
+            row = candle_rows.get(symbol)
+            if row is None:
+                continue
+
+            del pending_entries[symbol]
+
+            if symbol in positions:
+                continue
+            if len(positions) >= max_positions:
+                continue
+            if cash < min_trade_eur:
+                continue
+            if new_trades_this_bar >= max_new_trades_per_bar:
+                continue
+            if trades_per_week[week_key] >= max_new_trades_per_week:
+                continue
+
+            current_equity = _mark_to_market_equity_at_open(cash, positions, candle_rows)
+            current_risk_pct = portfolio_risk_used_pct(
+                {k: vars(v) for k, v in positions.items()},
+                current_equity,
+            )
+            if current_risk_pct >= max_portfolio_risk_pct:
+                continue
+
+            open_price = _row_open_price(row)
+            sizing = calculate_position_budget_from_risk(
+                current_equity=current_equity,
+                cash=cash,
+                price=open_price,
+                stop_pct=float(pending["dynamic_stop_pct"]),
+                risk_per_trade_pct=risk_per_trade_pct,
+                max_position_pct=max_position_pct,
+                fee_pct=fee_pct,
+                slippage_pct=slippage_pct,
+                min_trade_eur=min_trade_eur,
+            )
+
+            shares = float(sizing["shares"])
+            total_cost = float(sizing["invested_eur"])
+            risk_amount_eur = float(sizing["risk_amount_eur"])
+
+            if shares <= 0 or total_cost <= 0 or total_cost > cash:
+                continue
+
+            entry_price = open_price * (1.0 + slippage_pct)
+            gross_cost = shares * entry_price
+            fee = gross_cost * fee_pct
+            slippage_cost = gross_cost - (shares * open_price)
+
+            total_fees += fee
+            total_slippage += max(0.0, slippage_cost)
+            cash -= total_cost
+
+            positions[symbol] = OpenPosition(
+                symbol=symbol,
+                shares=shares,
+                entry_price=entry_price,
+                highest_price=entry_price,
+                invested_eur=total_cost,
+                entry_date=str(ts),
+                entry_bar_index=bar_index,
+                stop_loss_pct=float(pending["dynamic_stop_pct"]),
+                trailing_stop_pct=float(pending["dynamic_trailing_pct"]),
+                risk_amount_eur=risk_amount_eur,
+            )
+            new_trades_this_bar += 1
+            trades_per_week[week_key] += 1
+
         for symbol in list(positions.keys()):
             pos = positions[symbol]
             row = candle_rows.get(symbol)
             if row is None:
                 continue
 
-            market_price = float(row["Close"])
-            pos.highest_price = max(pos.highest_price, market_price)
+            if pos.entry_bar_index == bar_index:
+                continue
+
+            open_price = _row_open_price(row, fallback=pos.entry_price)
+            high_price = _row_high_price(row)
+            low_price = _row_low_price(row)
 
             stop_loss_price = pos.entry_price * (1.0 - pos.stop_loss_pct)
             trailing_stop_price = pos.highest_price * (1.0 - pos.trailing_stop_pct)
             held_bars = bar_index - pos.entry_bar_index
 
             exit_reason = None
-            if market_price <= stop_loss_price:
+            execution_basis = None
+            if low_price <= stop_loss_price:
                 exit_reason = "STOP_LOSS"
-            elif market_price <= trailing_stop_price:
+                execution_basis = min(open_price, stop_loss_price)
+            elif low_price <= trailing_stop_price:
                 exit_reason = "TRAILING_STOP"
+                execution_basis = min(open_price, trailing_stop_price)
             elif held_bars >= min_hold_bars and bool(row.get("sell_signal", False)):
-                exit_reason = "SELL_SIGNAL"
+                pending_signal_exits.setdefault(
+                    symbol,
+                    {
+                        "reason": "SELL_SIGNAL",
+                        "signal_time": str(ts),
+                    },
+                )
+                pos.highest_price = max(pos.highest_price, high_price)
+                continue
 
             if exit_reason:
-                exit_price = market_price * (1.0 - slippage_pct)
+                exit_price = float(execution_basis) * (1.0 - slippage_pct)
                 gross_value = pos.shares * exit_price
                 fee = gross_value * fee_pct
                 proceeds = gross_value - fee
 
-                slippage_cost = pos.shares * market_price - gross_value
+                slippage_cost = pos.shares * float(execution_basis) - gross_value
                 total_fees += fee
                 total_slippage += max(0.0, slippage_cost)
 
@@ -364,12 +554,20 @@ def run_realistic_backtest(
                     }
                 )
                 del positions[symbol]
+                pending_signal_exits.pop(symbol, None)
+                continue
 
-        if len(positions) < max_positions and cash >= min_trade_eur:
+            pos.highest_price = max(pos.highest_price, high_price)
+
+        if len(positions) + len(pending_entries) < max_positions and cash >= min_trade_eur:
             buy_candidates: list[tuple[float, str, float, float, float, float]] = []
 
             for symbol in selected_symbols:
                 if symbol in positions:
+                    continue
+                if symbol in pending_entries:
+                    continue
+                if symbol in pending_signal_exits:
                     continue
 
                 row = candle_rows.get(symbol)
@@ -428,64 +626,18 @@ def run_realistic_backtest(
 
             buy_candidates.sort(reverse=True, key=lambda x: (x[0], x[3]))
 
-            for _, symbol, market_price, _, dynamic_stop_pct, dynamic_trailing_pct in buy_candidates:
-                if len(positions) >= max_positions:
+            for _, symbol, _, _, dynamic_stop_pct, dynamic_trailing_pct in buy_candidates:
+                if len(positions) + len(pending_entries) >= max_positions:
                     break
-                if new_trades_this_bar >= max_new_trades_per_bar:
+                if queued_entries_this_bar >= max_new_trades_per_bar:
                     break
-                if trades_per_week[week_key] >= max_new_trades_per_week:
-                    break
-
-                current_equity = _mark_to_market_equity(cash, positions, candle_rows)
-                current_risk_pct = portfolio_risk_used_pct(
-                    {k: vars(v) for k, v in positions.items()},
-                    current_equity,
-                )
-                if current_risk_pct >= max_portfolio_risk_pct:
-                    break
-
-                sizing = calculate_position_budget_from_risk(
-                    current_equity=current_equity,
-                    cash=cash,
-                    price=market_price,
-                    stop_pct=dynamic_stop_pct,
-                    risk_per_trade_pct=risk_per_trade_pct,
-                    max_position_pct=max_position_pct,
-                    fee_pct=fee_pct,
-                    slippage_pct=slippage_pct,
-                    min_trade_eur=min_trade_eur,
-                )
-
-                shares = float(sizing["shares"])
-                total_cost = float(sizing["invested_eur"])
-                risk_amount_eur = float(sizing["risk_amount_eur"])
-
-                if shares <= 0 or total_cost <= 0 or total_cost > cash:
-                    continue
-
-                entry_price = market_price * (1.0 + slippage_pct)
-                gross_cost = shares * entry_price
-                fee = gross_cost * fee_pct
-                slippage_cost = gross_cost - (shares * market_price)
-
-                total_fees += fee
-                total_slippage += max(0.0, slippage_cost)
-                cash -= total_cost
-
-                positions[symbol] = OpenPosition(
-                    symbol=symbol,
-                    shares=shares,
-                    entry_price=entry_price,
-                    highest_price=market_price,
-                    invested_eur=total_cost,
-                    entry_date=str(ts),
-                    entry_bar_index=bar_index,
-                    stop_loss_pct=dynamic_stop_pct,
-                    trailing_stop_pct=dynamic_trailing_pct,
-                    risk_amount_eur=risk_amount_eur,
-                )
-                new_trades_this_bar += 1
-                trades_per_week[week_key] += 1
+                pending_entries[symbol] = {
+                    "score": float(learned_scores.get(symbol, 0.0)),
+                    "signal_time": str(ts),
+                    "dynamic_stop_pct": dynamic_stop_pct,
+                    "dynamic_trailing_pct": dynamic_trailing_pct,
+                }
+                queued_entries_this_bar += 1
 
         equity = _mark_to_market_equity(cash, positions, candle_rows)
         equity_curve.append(
