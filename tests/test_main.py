@@ -189,7 +189,7 @@ def test_run_uses_pro_mode_for_analysis(monkeypatch):
     monkeypatch.setattr(main, "print_trading_plan", lambda plan: None)
     monkeypatch.setattr(main, "simulate_trading_decisions", lambda **kwargs: [])
     monkeypatch.setattr(main, "print_trading_decisions", lambda decisions: None)
-    monkeypatch.setattr(main, "run_walk_forward", lambda: None)
+    monkeypatch.setattr(main, "run_walk_forward", lambda **kwargs: None)
     monkeypatch.setattr(main, "print_performance", lambda: None)
     monkeypatch.setattr(main, "print_runtime", lambda runtime: None)
     monkeypatch.setattr(main, "print_explanations", lambda: None)
@@ -264,7 +264,11 @@ def test_run_fast_mode_skips_walk_forward_and_realistic_backtest(monkeypatch):
     monkeypatch.setattr(main, "print_trading_plan", lambda plan: None)
     monkeypatch.setattr(main, "simulate_trading_decisions", lambda **kwargs: [])
     monkeypatch.setattr(main, "print_trading_decisions", lambda decisions: None)
-    monkeypatch.setattr(main, "run_walk_forward", lambda: calls.__setitem__("walk_forward", calls["walk_forward"] + 1))
+    monkeypatch.setattr(
+        main,
+        "run_walk_forward",
+        lambda **kwargs: calls.__setitem__("walk_forward", calls["walk_forward"] + 1),
+    )
     monkeypatch.setattr(
         main,
         "run_realistic_backtest",

@@ -13,6 +13,7 @@ import copy
 from typing import Any
 
 from analysis_engine import run_analysis
+from config import DEFAULT_MIN_VOLUME, get_active_profile_name, get_trading_config
 from trading_engine import simulate_trading_decisions
 
 
@@ -102,9 +103,24 @@ def _extract_prices(result: dict[str, Any]) -> dict[str, float]:
 # CORE WALK-FORWARD
 # =========================================================
 
-def run_walk_forward(total_capital: float = 1000.0) -> dict:
+def run_walk_forward(
+    total_capital: float | None = None,
+    top_n: int | None = None,
+    min_volume: int = DEFAULT_MIN_VOLUME,
+    profile_name: str | None = None,
+) -> dict:
+    resolved_profile = profile_name or get_active_profile_name()
+    cfg = get_trading_config(resolved_profile)
+
+    total_capital = float(total_capital if total_capital is not None else cfg["initial_capital"])
+    top_n = int(top_n if top_n is not None else cfg["max_positions"])
+
     print("\n========================================")
     print(" WALK-FORWARD ANALYSE")
+    print("========================================")
+    print(f"Profil              : {resolved_profile}")
+    print(f"Startkapital        : {total_capital:.2f} EUR")
+    print(f"Max. Positionen     : {top_n}")
     print("========================================")
 
     portfolio = _empty_portfolio()
@@ -122,8 +138,8 @@ def run_walk_forward(total_capital: float = 1000.0) -> dict:
 
         result = run_analysis(
             period=period,
-            top_n=5,
-            min_volume=1_000_000,
+            top_n=top_n,
+            min_volume=min_volume,
             long_mode=True,
             show_progress=False,
         )
@@ -135,6 +151,8 @@ def run_walk_forward(total_capital: float = 1000.0) -> dict:
             total_capital=equity,
             current_positions=portfolio,
             peak_equity=peak_equity,
+            top_n=top_n,
+            profile_name=resolved_profile,
         )
 
         orders = decisions["orders"]
@@ -175,6 +193,9 @@ def run_walk_forward(total_capital: float = 1000.0) -> dict:
     print("----------------------------------------")
 
     return {
+        "profile_name": resolved_profile,
+        "top_n": top_n,
+        "initial_capital": total_capital,
         "equity_curve": equity_curve,
         "avg_pnl": avg_pnl,
         "hit_rate": hit_rate,

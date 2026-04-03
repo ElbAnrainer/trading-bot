@@ -313,7 +313,11 @@ def run():
     if args.fast:
         print("\n[FAST MODE] Walk-Forward und realistischer Backtest werden uebersprungen.")
     else:
-        run_walk_forward()
+        run_walk_forward(
+            top_n=args.top,
+            min_volume=args.min_volume,
+            profile_name=active_profile,
+        )
 
     if not args.fast and not args.skip_realistic_backtest:
         symbols = _symbols_for_realistic_backtest(result, top_n=args.top)

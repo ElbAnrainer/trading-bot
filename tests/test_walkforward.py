@@ -53,15 +53,32 @@ def test_extract_prices_uses_price_close_and_zero_fallback():
 
 def test_run_walk_forward_aggregates_pnl_hit_rate_and_trades(monkeypatch):
     monkeypatch.setattr(walkforward, "WALK_WINDOWS", ["1mo", "3mo"])
+    monkeypatch.setattr(walkforward, "get_active_profile_name", lambda: "test-profile")
+    monkeypatch.setattr(
+        walkforward,
+        "get_trading_config",
+        lambda profile_name=None: {"initial_capital": 1000.0, "max_positions": 3},
+    )
 
     def fake_run_analysis(period, top_n, min_volume, long_mode, show_progress):
         prices = {
             "1mo": 10.0,
             "3mo": 12.0,
         }
+        assert top_n == 3
+        assert min_volume == walkforward.DEFAULT_MIN_VOLUME
         return {"results": [{"symbol": "AAA", "price": prices[period]}]}
 
-    def fake_simulate_trading_decisions(analysis_result, total_capital, current_positions, peak_equity):
+    def fake_simulate_trading_decisions(
+        analysis_result,
+        total_capital,
+        current_positions,
+        peak_equity,
+        top_n=None,
+        profile_name=None,
+    ):
+        assert top_n == 3
+        assert profile_name == "test-profile"
         if current_positions:
             return {"orders": [{"symbol": "AAA", "action": "SELL"}]}
         return {"orders": [{"symbol": "AAA", "action": "BUY", "capital": 100.0}]}
@@ -74,4 +91,5 @@ def test_run_walk_forward_aggregates_pnl_hit_rate_and_trades(monkeypatch):
     assert result["trades"] == 2
     assert result["avg_pnl"] == 10.0
     assert result["hit_rate"] == 50.0
+    assert result["profile_name"] == "test-profile"
     assert [point["equity"] for point in result["equity_curve"]] == [1000.0, 1020.0]
