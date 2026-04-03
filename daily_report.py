@@ -99,7 +99,9 @@ def _build_text_report(report):
     if report["top_symbols"]:
         for item in report["top_symbols"]:
             lines.append(
-                f"{item['symbol']} ({item.get('company', item['symbol'])}): {item.get('count', 0)}"
+                f"{item['symbol']} ({item.get('company', item['symbol'])}) | "
+                f"ISIN: {item.get('isin', '-')} | WKN: {item.get('wkn', '-')} | "
+                f"Anzahl: {item.get('count', 0)}"
             )
     else:
         lines.append("Keine Top-Aktien verfügbar.")
@@ -142,13 +144,15 @@ def _build_html_report(report):
         top_rows += (
             f"<tr>"
             f"<td>{item['symbol']}</td>"
+            f"<td>{item.get('isin', '-')}</td>"
+            f"<td>{item.get('wkn', '-')}</td>"
             f"<td>{item.get('company', item['symbol'])}</td>"
             f"<td>{item.get('count', 0)}</td>"
             f"</tr>"
         )
 
     if not top_rows:
-        top_rows = "<tr><td colspan='3'>Keine Top-Aktien verfügbar.</td></tr>"
+        top_rows = "<tr><td colspan='5'>Keine Top-Aktien verfügbar.</td></tr>"
 
     return f"""<!DOCTYPE html>
 <html lang="de">
@@ -238,6 +242,8 @@ def _build_html_report(report):
         <thead>
           <tr>
             <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
             <th>Firma</th>
             <th>Häufigkeit</th>
           </tr>
@@ -302,6 +308,8 @@ def _write_xml(report):
     for item in report.get("top_symbols", []):
         sym = ET.SubElement(top_symbols, "symbol")
         ET.SubElement(sym, "ticker").text = str(item.get("symbol", ""))
+        ET.SubElement(sym, "isin").text = str(item.get("isin", "-"))
+        ET.SubElement(sym, "wkn").text = str(item.get("wkn", "-"))
         ET.SubElement(sym, "company").text = str(item.get("company", ""))
         ET.SubElement(sym, "count").text = str(item.get("count", 0))
 
@@ -390,7 +398,11 @@ def _write_pdf(report):
     pdf.setFont("Helvetica", 11)
     if report.get("top_symbols"):
         for item in report["top_symbols"]:
-            line = f"{item['symbol']} ({item.get('company', item['symbol'])}): {item.get('count', 0)}"
+            line = (
+                f"{item['symbol']} ({item.get('company', item['symbol'])}) | "
+                f"ISIN: {item.get('isin', '-')} | WKN: {item.get('wkn', '-')} | "
+                f"Anzahl: {item.get('count', 0)}"
+            )
             y = _draw_wrapped_text(pdf, line, x, y, max_width)
             if y < 100:
                 pdf.showPage()

@@ -477,6 +477,8 @@ def _enrich_with_company_names(items, metadata_cache):
     for item in items:
         meta = metadata_cache.get(item["symbol"], {})
         item["company_name"] = meta.get("name", item["symbol"])
+        item["isin"] = meta.get("isin", "-")
+        item["wkn"] = meta.get("wkn", "-")
     return items
 
 
@@ -524,6 +526,8 @@ def _analyze_one_symbol(symbol, df, benchmark_df, metadata_cache, min_volume):
         return None
 
     info["company_name"] = meta.get("name", symbol)
+    info["isin"] = meta.get("isin", "-")
+    info["wkn"] = meta.get("wkn", "-")
 
     if info.get("avg_volume", 0) < min_volume:
         return None
@@ -731,6 +735,8 @@ def run_analysis(
                 log_trade_decision(
                     symbol=symbol,
                     company=meta.get("name", symbol),
+                    isin=result.get("isin", "-"),
+                    wkn=result.get("wkn", "-"),
                     signal=signal,
                     price_eur=price_eur,
                     score=result.get("score", 0.0),
@@ -743,6 +749,8 @@ def run_analysis(
                 log_trade_decision(
                     symbol=symbol,
                     company=meta.get("name", symbol),
+                    isin=result.get("isin", "-"),
+                    wkn=result.get("wkn", "-"),
                     signal="SELL",
                     price_eur=price_eur if price_eur is not None else 0.0,
                     score=trade_info["score"],
@@ -758,6 +766,8 @@ def run_analysis(
                     "price_native": price_native,
                     "native_currency": native_currency,
                     "company_name": meta.get("name", symbol),
+                    "isin": meta.get("isin", "-"),
+                    "wkn": meta.get("wkn", "-"),
                 }
             elif signal == "SELL" and symbol in portfolio:
                 del portfolio[symbol]
@@ -811,7 +821,15 @@ def run_analysis(
         native_currency = result["native_currency"]
 
         if signal and price_eur is not None and price_native is not None:
-            print_recommendation(result["symbol"], signal, price_eur, price_native, native_currency)
+            print_recommendation(
+                result["symbol"],
+                signal,
+                price_eur,
+                price_native,
+                native_currency,
+                isin=result.get("isin", "-"),
+                wkn=result.get("wkn", "-"),
+            )
 
         print_financial_overview(
             result["initial_cash_eur"],
@@ -831,7 +849,12 @@ def run_analysis(
                 result["closed_trades"],
                 result["native_currency"],
             )
-            print_equity_curve_terminal(result["symbol"], result["equity_curve"])
+            print_equity_curve_terminal(
+                result["symbol"],
+                result["equity_curve"],
+                isin=result.get("isin", "-"),
+                wkn=result.get("wkn", "-"),
+            )
 
     # ECHTES PERFORMANCE-RANKING
     results.sort(

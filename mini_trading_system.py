@@ -226,6 +226,8 @@ def run_mini_trading_system(
                 {
                     "type": "SELL",
                     "symbol": symbol,
+                    "isin": pos.get("isin", "-"),
+                    "wkn": pos.get("wkn", "-"),
                     "price": price,
                     "shares": shares,
                     "proceeds_eur": round(proceeds, 2),
@@ -318,6 +320,8 @@ def run_mini_trading_system(
                 symbol,
                 {
                     "symbol": symbol,
+                    "isin": planned.get("isin", "-"),
+                    "wkn": planned.get("wkn", "-"),
                     "entry_price": price,
                     "current_price": price,
                     "highest_price": price,
@@ -336,6 +340,8 @@ def run_mini_trading_system(
                 {
                     "type": "BUY",
                     "symbol": symbol,
+                    "isin": planned.get("isin", "-"),
+                    "wkn": planned.get("wkn", "-"),
                     "price": price,
                     "shares": shares,
                     "invested_eur": round(invested, 2),

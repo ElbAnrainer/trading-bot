@@ -117,7 +117,7 @@ def test_run_mini_trading_system_records_buy_event_with_time(monkeypatch):
     monkeypatch.setattr(
         mts,
         "build_trading_plan",
-        lambda total_capital=1000.0, top_n=1: [{"symbol": "AAA", "learned_score": 25.0}],
+        lambda total_capital=1000.0, top_n=1: [{"symbol": "AAA", "learned_score": 25.0, "isin": "US0000000001", "wkn": "AAA111"}],
     )
     monkeypatch.setattr(mts, "_fetch_all", lambda symbols, period, interval: {"AAA": market_df})
     monkeypatch.setattr(mts, "may_open_new_positions", lambda current_equity, peak_equity=None: (True, SimpleNamespace(trading_blocked=False)))
@@ -137,6 +137,8 @@ def test_run_mini_trading_system_records_buy_event_with_time(monkeypatch):
     ]
     assert state["cash"] == 800.0
     assert state["positions"]["AAA"]["opened_at"] == "2026-04-02T10:00:00"
+    assert state["positions"]["AAA"]["isin"] == "US0000000001"
+    assert state["history"][0]["wkn"] == "AAA111"
     assert state["history"][0]["time"] == "2026-04-02T10:00:00"
     assert mts._trades_this_week(state) == 1
     assert state["_saved"] is True
@@ -151,6 +153,8 @@ def test_run_mini_trading_system_records_sell_event_with_time(monkeypatch):
         "positions": {
             "AAA": {
                 "symbol": "AAA",
+                "isin": "US0000000001",
+                "wkn": "AAA111",
                 "entry_price": 100.0,
                 "current_price": 100.0,
                 "highest_price": 100.0,
@@ -189,6 +193,7 @@ def test_run_mini_trading_system_records_sell_event_with_time(monkeypatch):
     ]
     assert state["positions"] == {}
     assert state["cash"] == 320.0
+    assert state["history"][0]["isin"] == "US0000000001"
     assert state["history"][0]["time"] == "2026-04-02T11:00:00"
     assert mts._days_since_exit(state, "AAA") == 0
 

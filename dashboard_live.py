@@ -11,6 +11,7 @@ from typing import Any
 
 from config import get_active_profile_name, get_trading_config
 from dashboard import build_dashboard_data
+from security_identifiers import identifiers_text
 
 
 REFRESH_SECONDS = 2.0
@@ -197,6 +198,7 @@ def _top_scores_rows(data: dict[str, Any]) -> list[str]:
         avg_pnl = _colorize_number(row.get("avg_pnl", 0.0), avg_pnl_text)
         trades = f"{int(row.get('trades', 0)):>6}"
         rows.append(f"{_fit(row.get('symbol', '-'), 6):<6}{bonus}{hit}{avg_pnl}{trades}")
+        rows.append(f"  {identifiers_text(row.get('isin'), row.get('wkn'))}")
 
     return rows
 
@@ -216,6 +218,7 @@ def _portfolio_plan_rows(data: dict[str, Any]) -> list[str]:
             f"{float(row.get('capital', 0.0)):>14.2f}"
             f"{float(row.get('learned_score', 0.0)):>10.2f}"
         )
+        rows.append(f"  {identifiers_text(row.get('isin'), row.get('wkn'))}")
 
     return rows
 
@@ -241,6 +244,7 @@ def _open_positions_rows(data: dict[str, Any]) -> list[str]:
             f"{shares:>10.3f}"
             f"{invested:>11.2f}"
         )
+        rows.append(f"  {identifiers_text(pos.get('isin'), pos.get('wkn'))}")
 
     return rows
 
@@ -274,6 +278,7 @@ def _last_events_rows(data: dict[str, Any], content_width: int) -> list[str]:
             f"{_fit(price_str, price_w):>{price_w}}"
             f"{_fit(str(info or '-'), info_w):>{info_w}}"
         )
+        rows.append(f"  {identifiers_text(item.get('isin'), item.get('wkn'))}")
 
     return rows
 

@@ -29,6 +29,8 @@ def test_save_run_outputs_creates_files(tmp_path):
             "price_eur": 200.0,
             "price_native": 217.0,
             "native_currency": "USD",
+            "isin": "US0378331005",
+            "wkn": "865985",
         }
     }
 
@@ -52,3 +54,6 @@ def test_save_run_outputs_creates_files(tmp_path):
     assert data["period"] == "1mo"
     assert len(data["results"]) == 1
     assert data["results"][0]["symbol"] == "AAPL"
+    html = dashboard_html.read_text(encoding="utf-8")
+    assert "US0378331005" in html
+    assert "865985" in html

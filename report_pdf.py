@@ -78,6 +78,8 @@ def load_trades() -> list[dict[str, Any]]:
                 {
                     "symbol": row.get("symbol", "").strip(),
                     "company": row.get("company", "").strip(),
+                    "isin": row.get("isin", "-").strip(),
+                    "wkn": row.get("wkn", "-").strip(),
                     "score": _to_float(row.get("score", 0.0), 0.0),
                     "pnl_eur": pnl,
                     "time": row.get("timestamp") or row.get("time") or "",
@@ -178,6 +180,8 @@ def summarize_top_symbols(trades: list[dict[str, Any]], top_n: int = 5) -> list[
         if symbol not in by_symbol:
             by_symbol[symbol] = {
                 "company": trade["company"] or symbol,
+                "isin": trade.get("isin", "-"),
+                "wkn": trade.get("wkn", "-"),
                 "trades": 0,
                 "pnl": 0.0,
                 "scores": [],
@@ -197,6 +201,8 @@ def summarize_top_symbols(trades: list[dict[str, Any]], top_n: int = 5) -> list[
             {
                 "symbol": symbol,
                 "company": data["company"],
+                "isin": data.get("isin", "-"),
+                "wkn": data.get("wkn", "-"),
                 "trades": data["trades"],
                 "pnl": data["pnl"],
                 "avg_score": avg_score,
@@ -385,17 +391,19 @@ def _build_signal_section(
 
     content.append(Paragraph("Top-Aktien nach Journal P/L", section_style))
     if top_symbols:
-        top_table = [["Symbol", "Firma", "Trades", "P/L", "Ø Score"]]
+        top_table = [["Symbol", "ISIN", "WKN", "Firma", "Trades", "P/L", "Ø Score"]]
         for item in top_symbols:
             top_table.append([
                 item["symbol"],
+                item.get("isin", "-"),
+                item.get("wkn", "-"),
                 item["company"],
                 str(item["trades"]),
                 f"{item['pnl']:.2f} EUR",
                 f"{item['avg_score']:.2f}",
             ])
 
-        top_tbl = Table(top_table, colWidths=[2.3 * cm, 6.0 * cm, 2.0 * cm, 3.0 * cm, 2.0 * cm])
+        top_tbl = Table(top_table, colWidths=[1.8 * cm, 3.1 * cm, 2.0 * cm, 4.4 * cm, 1.6 * cm, 2.2 * cm, 1.8 * cm])
         top_tbl.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),

@@ -137,6 +137,8 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
         ranking_rows.append(
             "<tr>"
             f"<td>{_html_escape(row.get('symbol', '-'))}</td>"
+            f"<td>{_html_escape(row.get('isin', '-'))}</td>"
+            f"<td>{_html_escape(row.get('wkn', '-'))}</td>"
             f"<td style='text-align:right'>{_html_escape(bonus_text)}</td>"
             f"<td style='text-align:right'>{_html_escape(hit_rate_text)}</td>"
             f"<td style='text-align:right'>{_html_escape(avg_pnl_text)}</td>"
@@ -146,7 +148,7 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
         )
 
     if not ranking_rows:
-        ranking_rows.append("<tr><td colspan='6'>Keine Ranking-Daten vorhanden.</td></tr>")
+        ranking_rows.append("<tr><td colspan='8'>Keine Ranking-Daten vorhanden.</td></tr>")
 
     portfolio_rows = []
     for row in perf.get("portfolio_plan", []):
@@ -156,6 +158,8 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
         portfolio_rows.append(
             "<tr>"
             f"<td>{_html_escape(row.get('symbol', '-'))}</td>"
+            f"<td>{_html_escape(row.get('isin', '-'))}</td>"
+            f"<td>{_html_escape(row.get('wkn', '-'))}</td>"
             f"<td style='text-align:right'>{_html_escape(weight_text)}</td>"
             f"<td style='text-align:right'>{_html_escape(capital_text)}</td>"
             f"<td style='text-align:right'>{_html_escape(learned_score_text)}</td>"
@@ -163,7 +167,7 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
         )
 
     if not portfolio_rows:
-        portfolio_rows.append("<tr><td colspan='4'>Kein Portfolio-Plan verfügbar.</td></tr>")
+        portfolio_rows.append("<tr><td colspan='6'>Kein Portfolio-Plan verfügbar.</td></tr>")
 
     history_rows = []
     for item in state.get("history_tail", []):
@@ -184,13 +188,15 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
             f"<td>{_html_escape(item.get('time', '-'))}</td>"
             f"<td>{_html_escape(item.get('type', '-'))}</td>"
             f"<td>{_html_escape(item.get('symbol', '-'))}</td>"
+            f"<td>{_html_escape(item.get('isin', '-'))}</td>"
+            f"<td>{_html_escape(item.get('wkn', '-'))}</td>"
             f"<td style='text-align:right'>{_html_escape(price_text)}</td>"
             f"<td>{_html_escape(info or '-')}</td>"
             "</tr>"
         )
 
     if not history_rows:
-        history_rows.append("<tr><td colspan='5'>Keine Events vorhanden.</td></tr>")
+        history_rows.append("<tr><td colspan='7'>Keine Events vorhanden.</td></tr>")
 
     cfg = profile.get("config", {})
 
@@ -316,6 +322,8 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
         <thead>
           <tr>
             <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
             <th>Bonus</th>
             <th>Treffer</th>
             <th>Ø P/L</th>
@@ -335,6 +343,8 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
         <thead>
           <tr>
             <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
             <th>Gewicht</th>
             <th>Kapital</th>
             <th>Learned</th>
@@ -354,6 +364,8 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
             <th>Zeit</th>
             <th>Typ</th>
             <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
             <th>Preis</th>
             <th>Info</th>
           </tr>

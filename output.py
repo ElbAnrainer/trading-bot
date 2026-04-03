@@ -1,6 +1,8 @@
 from config import BASE_CURRENCY
 import shutil
 
+from security_identifiers import identifiers_text
+
 
 try:
     LINE_WIDTH = min(120, shutil.get_terminal_size().columns)
@@ -67,6 +69,10 @@ def _warning_line(text):
     if PRO_MODE:
         return _style(f"⚠ {text}", YELLOW, BOLD)
     return text
+
+
+def _identifier_line(isin, wkn, prefix="    "):
+    return f"{prefix}{identifiers_text(isin, wkn)}"
 
 
 def colorize(value, text):
@@ -144,11 +150,12 @@ def print_ranking(results):
             f"P/L: {colorize(pnl, f'{pnl:.2f} EUR'):>12} | "
             f"{pnl_pct:>7.2f}% | Treffer: {hit_rate:>6.2f}% | Trades: {trades:>3}{signal_text}"
         )
+        lines.append(_identifier_line(r.get("isin"), r.get("wkn")))
 
     _print_block(_headline("PERFORMANCE-RANKING DER BESTEN BACKTESTS"), lines)
 
 
-def print_recommendation(symbol, signal, price_eur, price_native, native_currency):
+def print_recommendation(symbol, signal, price_eur, price_native, native_currency, isin="-", wkn="-"):
     signal_str = colorize_signal(signal)
 
     if native_currency == BASE_CURRENCY:
@@ -163,6 +170,7 @@ def print_recommendation(symbol, signal, price_eur, price_native, native_currenc
         line = _warning_line(line)
 
     print(_format_row(line))
+    print(_format_row(_identifier_line(isin, wkn, prefix="      ")))
 
 
 def print_portfolio(portfolio):
@@ -190,6 +198,7 @@ def print_portfolio(portfolio):
                 f"{symbol:<6} {company[:22]:<22} | Qty: {int(qty):>4} | "
                 f"Wert: {colorize(value, f'{value:.2f} EUR')} | {native_value:.2f} {pos['native_currency']}"
             )
+        lines.append(_identifier_line(pos.get("isin"), pos.get("wkn")))
 
     lines.append(_subline("-"))
     lines.append(f"Depotwert: {colorize(total, f'{total:.2f} EUR')}")
@@ -212,6 +221,7 @@ def print_future_candidates(candidates):
             f"{colorize_signal(c['future_signal']):<6} | "
             f"Score: {c['score']:>6.2f} | Stärke: {c['strength']:<6} | Risiko: {c['risk']:<6}"
         )
+        lines.append(_identifier_line(c.get("isin"), c.get("wkn")))
         lines.append(f"    Grund: {reasons}")
 
         if PRO_MODE and c.get("future_signal") == "BUY" and c.get("risk") == "hoch":
@@ -233,6 +243,7 @@ def print_future_candidates_compact(candidates):
             f"{c['future_signal']:<5} | Score: {c['score']:>6.2f} | "
             f"Stärke: {c['strength']:<6} | Risiko: {c['risk']:<6}"
         )
+        lines.append(_identifier_line(c.get("isin"), c.get("wkn")))
 
     _print_block(_headline("TOP-KANDIDATEN FÜR DIE BEOBACHTUNG"), lines)
 
@@ -253,7 +264,7 @@ def print_financial_overview(start, end, pnl, currency, pnl_native):
     _print_block(_headline("FINANZÜBERSICHT DER SIMULATION"), lines)
 
 
-def print_equity_curve_terminal(symbol, curve):
+def print_equity_curve_terminal(symbol, curve, isin="-", wkn="-"):
     if not curve:
         return
 
@@ -274,6 +285,7 @@ def print_equity_curve_terminal(symbol, curve):
         spark = "".join(chars)
 
     lines = [
+        identifiers_text(isin, wkn),
         spark,
         f"Start: {values[0]:.2f}",
         f"Ende: {values[-1]:.2f}",
@@ -316,6 +328,7 @@ def print_diagnostics(info):
         return "JA" if v else "NEIN"
 
     lines = [
+        identifiers_text(info.get("isin"), info.get("wkn")),
         f"Trend                : {yn(info.get('trend_ok'))}",
         f"Breakout             : {yn(info.get('breakout_ok'))}",
         f"Momentum             : {yn(info.get('momentum_ok'))}",
@@ -366,6 +379,7 @@ def print_buy_overview(candidates):
             f"{colorize_signal(c['future_signal'])} | "
             f"Score: {c['score']:.2f} | Stärke: {c['strength']} | Risiko: {c['risk']}"
         )
+        lines.append(_identifier_line(c.get("isin"), c.get("wkn")))
 
     _print_block(_headline("BEOBACHTUNGSSIGNALE"), lines)
 

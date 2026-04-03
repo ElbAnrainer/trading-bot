@@ -31,6 +31,8 @@ def test_print_ranking_outputs_symbols(capsys):
         {
             "symbol": "AAPL",
             "company_name": "Apple Inc.",
+            "isin": "US0378331005",
+            "wkn": "865985",
             "pnl_eur": 120.0,
             "pnl_pct_eur": 1.2,
             "trade_count": 5,
@@ -38,6 +40,8 @@ def test_print_ranking_outputs_symbols(capsys):
         {
             "symbol": "SAP",
             "company_name": "SAP SE",
+            "isin": "DE0007164600",
+            "wkn": "716460",
             "pnl_eur": -20.0,
             "pnl_pct_eur": -0.2,
             "trade_count": 3,
@@ -49,6 +53,8 @@ def test_print_ranking_outputs_symbols(capsys):
     captured = capsys.readouterr()
     assert "AAPL" in captured.out
     assert "Apple Inc." in captured.out
+    assert "US0378331005" in captured.out
+    assert "865985" in captured.out
     assert "SAP" in captured.out
 
 
@@ -57,6 +63,8 @@ def test_print_future_candidates_outputs_reasons(capsys):
         {
             "symbol": "AAPL",
             "company_name": "Apple Inc.",
+            "isin": "US0378331005",
+            "wkn": "865985",
             "future_signal": "BUY",
             "strength": "hoch",
             "risk": "mittel",
@@ -70,15 +78,17 @@ def test_print_future_candidates_outputs_reasons(capsys):
     captured = capsys.readouterr()
     assert "TOP-KANDIDATEN FÜR DIE BEOBACHTUNG" in captured.out
     assert "Apple Inc." in captured.out
+    assert "US0378331005" in captured.out
     assert "Breakout" in captured.out
 
 
 def test_print_recommendation_outputs_signal(capsys):
-    print_recommendation("AAPL", "BUY", 123.45, 134.56, "USD")
+    print_recommendation("AAPL", "BUY", 123.45, 134.56, "USD", "US0378331005", "865985")
 
     captured = capsys.readouterr()
     assert "AAPL" in captured.out
     assert "BUY" in captured.out
+    assert "865985" in captured.out
 
 
 def test_print_portfolio_outputs_positions(capsys):
@@ -89,6 +99,8 @@ def test_print_portfolio_outputs_positions(capsys):
             "price_native": 110.0,
             "native_currency": "USD",
             "company_name": "Apple Inc.",
+            "isin": "US0378331005",
+            "wkn": "865985",
         },
         "SAP": {
             "qty": 5,
@@ -96,6 +108,8 @@ def test_print_portfolio_outputs_positions(capsys):
             "price_native": 200.0,
             "native_currency": "EUR",
             "company_name": "SAP SE",
+            "isin": "DE0007164600",
+            "wkn": "716460",
         },
     }
 
@@ -104,6 +118,7 @@ def test_print_portfolio_outputs_positions(capsys):
     captured = capsys.readouterr()
     assert "SIMULIERTES DEPOT" in captured.out
     assert "Apple Inc." in captured.out
+    assert "US0378331005" in captured.out
     assert "Depotwert" in captured.out
 
 
@@ -160,10 +175,11 @@ def test_print_equity_curve_terminal_outputs_curve(capsys):
         {"time": "2026-03-23", "equity_eur": 1030.0},
     ]
 
-    print_equity_curve_terminal("AAPL", equity_curve)
+    print_equity_curve_terminal("AAPL", equity_curve, "US0378331005", "865985")
 
     captured = capsys.readouterr()
     assert "DEPOTWERT-KURVE AAPL" in captured.out
+    assert "US0378331005" in captured.out
     assert "Start:" in captured.out
     assert "Ende:" in captured.out
 
@@ -171,6 +187,8 @@ def test_print_equity_curve_terminal_outputs_curve(capsys):
 def test_print_diagnostics_outputs_fields(capsys):
     info = {
         "symbol": "AAPL",
+        "isin": "US0378331005",
+        "wkn": "865985",
         "trend_ok": True,
         "breakout_ok": False,
         "momentum_ok": True,
@@ -187,6 +205,7 @@ def test_print_diagnostics_outputs_fields(capsys):
 
     captured = capsys.readouterr()
     assert "DIAGNOSE AAPL" in captured.out
+    assert "865985" in captured.out
     assert "Trend" in captured.out
     assert "Zukunft" in captured.out
 
@@ -196,6 +215,8 @@ def test_print_buy_overview_outputs_heading(capsys):
         {
             "symbol": "AAPL",
             "company_name": "Apple Inc.",
+            "isin": "US0378331005",
+            "wkn": "865985",
             "future_signal": "WATCH",
             "strength": "hoch",
             "risk": "mittel",
@@ -208,6 +229,7 @@ def test_print_buy_overview_outputs_heading(capsys):
     captured = capsys.readouterr()
     assert "BEOBACHTUNGSSIGNALE" in captured.out
     assert "Apple Inc." in captured.out
+    assert "US0378331005" in captured.out
 
 
 def test_print_simulation_notice_outputs_text(capsys):

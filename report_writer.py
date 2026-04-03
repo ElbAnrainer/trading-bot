@@ -107,6 +107,8 @@ def render_dashboard_html(output_dir, period, interval, results, portfolio):
     rows = []
     for item in results:
         symbol = html.escape(str(item.get("symbol", "")))
+        isin = html.escape(str(item.get("isin", "-")))
+        wkn = html.escape(str(item.get("wkn", "-")))
         name = html.escape(str(item.get("company_name", "")))
         signal = html.escape(str(item.get("signal", "")))
         native_currency = html.escape(str(item.get("native_currency", "")))
@@ -121,6 +123,8 @@ def render_dashboard_html(output_dir, period, interval, results, portfolio):
             f"""
             <tr>
               <td>{symbol}</td>
+              <td>{isin}</td>
+              <td>{wkn}</td>
               <td>{name}</td>
               <td>{signal}</td>
               <td>{native_currency}</td>
@@ -134,6 +138,8 @@ def render_dashboard_html(output_dir, period, interval, results, portfolio):
 
     portfolio_rows = []
     for symbol, pos in portfolio.items():
+        isin = html.escape(str(pos.get("isin", "-")))
+        wkn = html.escape(str(pos.get("wkn", "-")))
         qty = pos.get("qty", 0)
         price_eur = float(pos.get("price_eur", 0.0))
         price_native = float(pos.get("price_native", 0.0))
@@ -144,6 +150,8 @@ def render_dashboard_html(output_dir, period, interval, results, portfolio):
             f"""
             <tr>
               <td>{html.escape(symbol)}</td>
+              <td>{isin}</td>
+              <td>{wkn}</td>
               <td>{qty}</td>
               <td>{price_eur:.2f} EUR</td>
               <td>{price_native:.2f} {native_currency}</td>
@@ -156,7 +164,7 @@ def render_dashboard_html(output_dir, period, interval, results, portfolio):
         portfolio_rows.append(
             """
             <tr>
-              <td colspan="5">Keine Positionen im virtuellen Depot.</td>
+              <td colspan="7">Keine Positionen im virtuellen Depot.</td>
             </tr>
             """
         )
@@ -220,6 +228,8 @@ def render_dashboard_html(output_dir, period, interval, results, portfolio):
     <thead>
       <tr>
         <th>Symbol</th>
+        <th>ISIN</th>
+        <th>WKN</th>
         <th>Name</th>
         <th>Signal</th>
         <th>Währung</th>
@@ -230,7 +240,7 @@ def render_dashboard_html(output_dir, period, interval, results, portfolio):
       </tr>
     </thead>
     <tbody>
-      {''.join(rows) if rows else '<tr><td colspan="8">Keine Ergebnisse.</td></tr>'}
+      {''.join(rows) if rows else '<tr><td colspan="10">Keine Ergebnisse.</td></tr>'}
     </tbody>
   </table>
 
@@ -239,6 +249,8 @@ def render_dashboard_html(output_dir, period, interval, results, portfolio):
     <thead>
       <tr>
         <th>Symbol</th>
+        <th>ISIN</th>
+        <th>WKN</th>
         <th>Stück</th>
         <th>Kurs EUR</th>
         <th>Kurs nativ</th>

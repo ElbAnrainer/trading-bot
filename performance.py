@@ -52,6 +52,8 @@ def _load():
         trades.append({
             "symbol": r.get("symbol", ""),
             "company": r.get("company", ""),
+            "isin": r.get("isin", "-"),
+            "wkn": r.get("wkn", "-"),
             "pnl": _to_float(r.get("realized_pnl_eur", 0)),
             "score": _to_float(r.get("score", 0)),
         })
@@ -63,10 +65,12 @@ def _load():
 # CORE
 # =========================================================
 def analyze_performance():
-    trades, _ = _load()
+    trades, rows = _load()
 
     stats = defaultdict(lambda: {
         "company": "",
+        "isin": "-",
+        "wkn": "-",
         "trades": 0,
         "wins": 0,
         "pnl": 0.0,
@@ -76,6 +80,8 @@ def analyze_performance():
     for t in trades:
         s = stats[t["symbol"]]
         s["company"] = t["company"]
+        s["isin"] = t.get("isin", "-")
+        s["wkn"] = t.get("wkn", "-")
         s["trades"] += 1
         s["pnl"] += t["pnl"]
         s["scores"].append(t["score"])
@@ -99,6 +105,9 @@ def analyze_performance():
 
         ranking.append({
             "symbol": sym,
+            "company": s["company"],
+            "isin": s["isin"],
+            "wkn": s["wkn"],
             "trades": s["trades"],
             "hit_rate": hit * 100,
             "avg_pnl": avg_pnl,
@@ -110,9 +119,28 @@ def analyze_performance():
 
     portfolio = build_portfolio(ranking)
 
+    top_symbols = [
+        {
+            "symbol": item["symbol"],
+            "company": item.get("company", item["symbol"]),
+            "isin": item.get("isin", "-"),
+            "wkn": item.get("wkn", "-"),
+            "count": item["trades"],
+        }
+        for item in ranking[:5]
+    ]
+
     return {
         "ranking": ranking,
         "portfolio": portfolio,
+        "top_symbols": top_symbols,
+        "total_entries": len(rows),
+        "closed_trades": len(trades),
+        "winning_trades": sum(1 for t in trades if t["pnl"] > 0),
+        "losing_trades": sum(1 for t in trades if t["pnl"] < 0),
+        "hit_rate": (sum(1 for t in trades if t["pnl"] > 0) / len(trades) * 100.0) if trades else 0.0,
+        "realized_pnl": sum(t["pnl"] for t in trades),
+        "avg_trade_pnl": (sum(t["pnl"] for t in trades) / len(trades)) if trades else 0.0,
     }
 
 
@@ -120,18 +148,20 @@ def analyze_performance():
 # FORMAT (FIXED ALIGNMENT)
 # =========================================================
 def _format_header():
-    return f"{'SYM':<6}{'BONUS':>10}{'TREFFER':>10}{'Ø P/L':>14}{'TRADES':>8}"
+    return f"{'SYM':<6}{'ISIN':<14}{'WKN':<8}{'BONUS':>10}{'TREFFER':>10}{'Ø P/L':>14}{'TRADES':>8}"
 
 
 def _format_row(r):
     sym = f"{r['symbol']:<6}"
+    isin = f"{r.get('isin', '-'):<14}"[:14]
+    wkn = f"{r.get('wkn', '-'):<8}"[:8]
 
     bonus = colorize(r["bonus"], f"{r['bonus']:+10.2f}")
     hit = f"{r['hit_rate']:>9.1f}%"
     pnl = colorize(r["avg_pnl"], f"{r['avg_pnl']:>14,.2f}")
     trades = f"{r['trades']:>8}"
 
-    return f"{sym}{bonus}{hit}{pnl}{trades}"
+    return f"{sym}{isin}{wkn}{bonus}{hit}{pnl}{trades}"
 
 
 # =========================================================
@@ -153,13 +183,15 @@ def print_performance():
 
     # Portfolio
     p_lines = []
-    header = f"{'SYM':<6}{'GEWICHT':>10}{'KAPITAL':>14}"
+    header = f"{'SYM':<6}{'ISIN':<14}{'WKN':<8}{'GEWICHT':>10}{'KAPITAL':>14}"
     p_lines.append(header)
     p_lines.append("-" * len(header))
 
     for p in data["portfolio"]:
         p_lines.append(
             f"{p['symbol']:<6}"
+            f"{str(p.get('isin', '-'))[:14]:<14}"
+            f"{str(p.get('wkn', '-'))[:8]:<8}"
             f"{p['weight']:>10.2f}"
             f"{p['capital']:>14.2f} EUR"
         )

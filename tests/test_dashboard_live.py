@@ -7,6 +7,8 @@ def _sample_data():
             "ranking": [
                 {
                     "symbol": "AAPL",
+                    "isin": "US0378331005",
+                    "wkn": "865985",
                     "bonus": 1.25,
                     "hit_rate": 61.5,
                     "avg_pnl": 123.45,
@@ -16,6 +18,8 @@ def _sample_data():
             "portfolio_plan": [
                 {
                     "symbol": "MSFT",
+                    "isin": "US5949181045",
+                    "wkn": "870747",
                     "weight": 0.35,
                     "capital": 3500.0,
                     "learned_score": 42.0,
@@ -36,6 +40,8 @@ def _sample_data():
             "updated_at": "2026-04-03 10:15:00",
             "open_positions": {
                 "MSFT": {
+                    "isin": "US5949181045",
+                    "wkn": "870747",
                     "entry_price": 312.0,
                     "current_price": 318.0,
                     "shares": 5.5,
@@ -47,6 +53,8 @@ def _sample_data():
                     "time": "2026-04-03 10:00",
                     "type": "BUY",
                     "symbol": "MSFT",
+                    "isin": "US5949181045",
+                    "wkn": "870747",
                     "price": 312.0,
                     "reason": "Breakout",
                 }
@@ -75,6 +83,7 @@ def test_build_live_terminal_lines_uses_two_columns_on_wide_terminals(monkeypatc
     clean = [dl._strip_ansi(line) for line in lines]
 
     assert any("AKTIVES PROFIL" in line and "PORTFOLIO-PLAN" in line for line in clean)
+    assert any("US0378331005" in line for line in clean)
     assert max(len(line) for line in clean) <= 160
 
 
@@ -102,4 +111,5 @@ def test_build_live_terminal_lines_stacks_sections_on_narrow_terminals(monkeypat
 
     assert portfolio_idx > profile_idx
     assert not any("AKTIVES PROFIL" in line and "PORTFOLIO-PLAN" in line for line in clean)
+    assert any("865985" in line for line in clean)
     assert max(len(line) for line in clean) <= 100

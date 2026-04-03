@@ -3,6 +3,8 @@ from terminal_ui import clear, colorize, get_width
 
 COLS = [
     ("SYM", 6),
+    ("ISIN", 14),
+    ("WKN", 8),
     ("BONUS", 10),
     ("TREFFER", 10),
     ("Ø P/L", 14),
@@ -16,6 +18,8 @@ def _header():
 
 def _row(r):
     sym = f"{r['symbol']:<6}"
+    isin = f"{str(r.get('isin', '-'))[:14]:<14}"
+    wkn = f"{str(r.get('wkn', '-'))[:8]:<8}"
 
     bonus_val = f"{r['bonus']:+.2f}"
     bonus = colorize(r["bonus"], f"{bonus_val:>10}")
@@ -27,7 +31,7 @@ def _row(r):
 
     trades = f"{r['trades']:>8}"
 
-    return f"{sym}{bonus}{hit}{pnl}{trades}"
+    return f"{sym}{isin}{wkn}{bonus}{hit}{pnl}{trades}"
 
 
 def render_live_table(ranking, title="LIVE TRADING TABLE"):

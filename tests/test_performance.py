@@ -22,12 +22,16 @@ def test_load_filters_closed_trades_and_parses_numbers(tmp_path, monkeypatch):
         {
             "symbol": "AAPL",
             "company": "Apple",
+            "isin": "-",
+            "wkn": "-",
             "pnl": 12.5,
             "score": 80.0,
         },
         {
             "symbol": "NVDA",
             "company": "NVIDIA",
+            "isin": "-",
+            "wkn": "-",
             "pnl": -3.0,
             "score": 0.0,
         },
@@ -40,9 +44,9 @@ def test_analyze_performance_builds_sorted_ranking_and_portfolio(monkeypatch):
         "_load",
         lambda: (
             [
-                {"symbol": "AAA", "company": "Alpha", "pnl": 10.0, "score": 70.0},
-                {"symbol": "AAA", "company": "Alpha", "pnl": 5.0, "score": 80.0},
-                {"symbol": "BBB", "company": "Beta", "pnl": -5.0, "score": 20.0},
+                {"symbol": "AAA", "company": "Alpha", "isin": "US0000000001", "wkn": "AAA111", "pnl": 10.0, "score": 70.0},
+                {"symbol": "AAA", "company": "Alpha", "isin": "US0000000001", "wkn": "AAA111", "pnl": 5.0, "score": 80.0},
+                {"symbol": "BBB", "company": "Beta", "isin": "US0000000002", "wkn": "BBB222", "pnl": -5.0, "score": 20.0},
             ],
             [],
         ),
@@ -60,7 +64,7 @@ def test_analyze_performance_builds_sorted_ranking_and_portfolio(monkeypatch):
 
     def fake_build_portfolio(ranking, top_n=5, capital=1000):
         portfolio_inputs["ranking"] = ranking
-        return [{"symbol": ranking[0]["symbol"], "weight": 1.0, "capital": capital}]
+        return [{"symbol": ranking[0]["symbol"], "isin": ranking[0]["isin"], "wkn": ranking[0]["wkn"], "weight": 1.0, "capital": capital}]
 
     monkeypatch.setattr(performance, "update_score", fake_update_score)
     monkeypatch.setattr(performance, "get_score", fake_get_score)
@@ -72,6 +76,9 @@ def test_analyze_performance_builds_sorted_ranking_and_portfolio(monkeypatch):
     assert result["ranking"][0]["learned_score"] > result["ranking"][1]["learned_score"]
     assert result["ranking"][0]["avg_pnl"] == 7.5
     assert round(result["ranking"][0]["hit_rate"], 2) == 100.0
+    assert result["ranking"][0]["isin"] == "US0000000001"
+    assert result["ranking"][0]["wkn"] == "AAA111"
     assert updated["AAA"] > updated["BBB"]
     assert portfolio_inputs["ranking"] == result["ranking"]
-    assert result["portfolio"] == [{"symbol": "AAA", "weight": 1.0, "capital": 1000}]
+    assert result["top_symbols"][0]["isin"] == "US0000000001"
+    assert result["portfolio"] == [{"symbol": "AAA", "isin": "US0000000001", "wkn": "AAA111", "weight": 1.0, "capital": 1000}]
