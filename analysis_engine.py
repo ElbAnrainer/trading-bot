@@ -822,17 +822,19 @@ def run_analysis(
             interval=interval,
             results=[],
             portfolio={},
+            future_candidates=future_candidates,
         )
         print_learning_summary()
         print_performance()
-        build_dashboard()
-        return {
+        dashboard_result = {
             "period": period,
             "interval": interval,
             "results": [],
             "portfolio": {},
             "future_candidates": future_candidates,
         }
+        build_dashboard(analysis_result=dashboard_result)
+        return dashboard_result
 
     if long_mode:
         for info in diagnostics_to_print:
@@ -907,16 +909,18 @@ def run_analysis(
         interval=interval,
         results=results,
         portfolio=portfolio,
+        future_candidates=future_candidates,
     )
 
     print_learning_summary()
     print_performance()
-    build_dashboard()
-
-    return {
+    dashboard_result = {
         "period": period,
         "interval": interval,
         "results": results,
         "portfolio": portfolio,
         "future_candidates": future_candidates,
     }
+    build_dashboard(analysis_result=dashboard_result)
+
+    return dashboard_result

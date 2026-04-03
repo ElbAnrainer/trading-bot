@@ -3,6 +3,35 @@ import dashboard_live as dl
 
 def _sample_data():
     return {
+        "analysis": {
+            "period": "1mo",
+            "interval": "5m",
+            "generated_at": "2026-04-03T10:30:00Z",
+            "current_results": [
+                {
+                    "symbol": "AAPL",
+                    "isin": "US0378331005",
+                    "wkn": "865985",
+                    "signal": "BUY",
+                    "pnl_eur": 123.45,
+                    "trade_count": 9,
+                    "score": 72.5,
+                }
+            ],
+            "trading_plan": [
+                {
+                    "symbol": "MSFT",
+                    "isin": "US5949181045",
+                    "wkn": "870747",
+                    "weight": 0.35,
+                    "capital": 3500.0,
+                    "learned_score": 42.0,
+                }
+            ],
+            "future_candidates": [],
+            "simulated_portfolio": [],
+            "orders": [],
+        },
         "performance": {
             "ranking": [
                 {

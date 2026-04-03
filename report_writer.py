@@ -24,6 +24,8 @@ def _json_safe_results(results):
                 "pnl_native": item.get("pnl_native"),
                 "pnl_pct_eur": item.get("pnl_pct_eur"),
                 "trade_count": item.get("trade_count"),
+                "hit_rate_pct": item.get("hit_rate_pct"),
+                "score": item.get("score"),
                 "last_price_eur": item.get("last_price_eur"),
                 "last_price_native": item.get("last_price_native"),
                 "initial_cash_eur": item.get("initial_cash_eur"),
@@ -33,7 +35,76 @@ def _json_safe_results(results):
     return safe
 
 
-def write_latest_json(output_dir, period, interval, results, portfolio):
+def _json_safe_candidates(candidates):
+    safe = []
+    for item in candidates or []:
+        safe.append(
+            {
+                "symbol": item.get("symbol"),
+                "company_name": item.get("company_name", item.get("company")),
+                "isin": item.get("isin"),
+                "wkn": item.get("wkn"),
+                "future_signal": item.get("future_signal"),
+                "score": item.get("score"),
+                "score_before_learning": item.get("score_before_learning"),
+                "learned_bonus": item.get("learned_bonus"),
+                "learned_confidence": item.get("learned_confidence"),
+            }
+        )
+    return safe
+
+
+def _json_safe_trading_plan(plan):
+    safe = []
+    for item in plan or []:
+        safe.append(
+            {
+                "symbol": item.get("symbol"),
+                "company": item.get("company", item.get("company_name")),
+                "isin": item.get("isin"),
+                "wkn": item.get("wkn"),
+                "weight": item.get("weight"),
+                "capital": item.get("capital"),
+                "learned_score": item.get("learned_score"),
+            }
+        )
+    return safe
+
+
+def _json_safe_decisions(decisions):
+    if not decisions:
+        return {}
+
+    safe_orders = []
+    for order in decisions.get("orders", []):
+        safe_orders.append(
+            {
+                "action": order.get("action"),
+                "symbol": order.get("symbol"),
+                "reason": order.get("reason"),
+                "capital": order.get("capital"),
+                "weight": order.get("weight"),
+                "learned_score": order.get("learned_score"),
+            }
+        )
+
+    return {
+        "orders": safe_orders,
+        "drawdown_state": decisions.get("drawdown_state", {}),
+        "risk": decisions.get("risk", {}),
+    }
+
+
+def write_latest_json(
+    output_dir,
+    period,
+    interval,
+    results,
+    portfolio,
+    future_candidates=None,
+    trading_plan=None,
+    decisions=None,
+):
     _ensure_dir(output_dir)
 
     payload = {
@@ -42,9 +113,39 @@ def write_latest_json(output_dir, period, interval, results, portfolio):
         "interval": interval,
         "results": _json_safe_results(results),
         "portfolio": portfolio,
+        "future_candidates": _json_safe_candidates(future_candidates),
+        "trading_plan": _json_safe_trading_plan(trading_plan),
+        "decisions": _json_safe_decisions(decisions),
     }
 
     target = Path(output_dir) / "latest_run.json"
+    with open(target, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
+def update_latest_json_context(
+    output_dir,
+    *,
+    future_candidates=None,
+    trading_plan=None,
+    decisions=None,
+):
+    _ensure_dir(output_dir)
+
+    target = Path(output_dir) / "latest_run.json"
+    if target.exists():
+        with open(target, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    else:
+        payload = {}
+
+    if future_candidates is not None:
+        payload["future_candidates"] = _json_safe_candidates(future_candidates)
+    if trading_plan is not None:
+        payload["trading_plan"] = _json_safe_trading_plan(trading_plan)
+    if decisions is not None:
+        payload["decisions"] = _json_safe_decisions(decisions)
+
     with open(target, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
@@ -270,7 +371,25 @@ def render_dashboard_html(output_dir, period, interval, results, portfolio):
         f.write(html_doc)
 
 
-def save_run_outputs(output_dir, period, interval, results, portfolio):
-    write_latest_json(output_dir, period, interval, results, portfolio)
+def save_run_outputs(
+    output_dir,
+    period,
+    interval,
+    results,
+    portfolio,
+    future_candidates=None,
+    trading_plan=None,
+    decisions=None,
+):
+    write_latest_json(
+        output_dir,
+        period,
+        interval,
+        results,
+        portfolio,
+        future_candidates=future_candidates,
+        trading_plan=trading_plan,
+        decisions=decisions,
+    )
     append_history_csv(output_dir, period, interval, results)
     render_dashboard_html(output_dir, period, interval, results, portfolio)

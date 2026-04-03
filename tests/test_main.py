@@ -193,6 +193,8 @@ def test_run_uses_pro_mode_for_analysis(monkeypatch):
     monkeypatch.setattr(main, "print_performance", lambda: None)
     monkeypatch.setattr(main, "print_runtime", lambda runtime: None)
     monkeypatch.setattr(main, "print_explanations", lambda: None)
+    monkeypatch.setattr(main, "update_latest_json_context", lambda **kwargs: None)
+    monkeypatch.setattr(main, "build_dashboard", lambda **kwargs: None)
     monkeypatch.setattr(main, "_run_mail", lambda send_mail, pdf_path: None)
 
     main.run()
@@ -226,6 +228,8 @@ def test_run_live_flag_keeps_live_mode_separate(monkeypatch):
     monkeypatch.setattr(main, "check_dependencies", lambda: True)
     monkeypatch.setattr(main, "run_live", lambda: called.__setitem__("live", True))
     monkeypatch.setattr(main, "run_analysis", lambda **kwargs: (_ for _ in ()).throw(AssertionError("run_analysis should not be called")))
+    monkeypatch.setattr(main, "update_latest_json_context", lambda **kwargs: None)
+    monkeypatch.setattr(main, "build_dashboard", lambda **kwargs: None)
 
     main.run()
 
@@ -278,6 +282,8 @@ def test_run_fast_mode_skips_walk_forward_and_realistic_backtest(monkeypatch):
     monkeypatch.setattr(main, "print_performance", lambda: None)
     monkeypatch.setattr(main, "print_runtime", lambda runtime: None)
     monkeypatch.setattr(main, "print_explanations", lambda: None)
+    monkeypatch.setattr(main, "update_latest_json_context", lambda **kwargs: None)
+    monkeypatch.setattr(main, "build_dashboard", lambda **kwargs: None)
     monkeypatch.setattr(main, "_run_mail", lambda send_mail, pdf_path: None)
 
     main.run()

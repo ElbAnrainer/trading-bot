@@ -166,6 +166,7 @@ def _profile_rows(profile_name: str, cfg: dict[str, Any]) -> list[str]:
 
 
 def _systemstatus_rows(data: dict[str, Any]) -> list[str]:
+    analysis = data.get("analysis", {})
     perf = data["performance"]
     state = data["state"]
 
@@ -178,12 +179,36 @@ def _systemstatus_rows(data: dict[str, Any]) -> list[str]:
         f"Trades: {perf['closed_trades']} | Trefferquote: {_fmt_pct(perf['hit_rate'])}",
         f"P/L: {_colorize_number(perf['realized_pnl'], _fmt_money(perf['realized_pnl']))}",
         f"O Trade: {_colorize_number(perf['avg_trade_pnl'], _fmt_money(perf['avg_trade_pnl']))}",
-        f"Updated: {state.get('updated_at') or '-'}",
+        (
+            f"Analyse: {analysis.get('period', '-')} / {analysis.get('interval', '-')} | "
+            f"Ergebnisse: {len(analysis.get('current_results', []))} | "
+            f"Plan: {len(analysis.get('trading_plan', []))}"
+        ),
+        f"Updated: {analysis.get('generated_at') or state.get('updated_at') or '-'}",
     ]
 
 
 def _top_scores_rows(data: dict[str, Any]) -> list[str]:
+    current_results = data.get("analysis", {}).get("current_results", [])
     ranking = data["performance"]["ranking"]
+
+    if current_results:
+        rows = [f"{'SYM':<6}{'SIG':<6}{'P/L':>12}{'TRD':>6}{'SCORE':>10}"]
+        for row in current_results[:8]:
+            pnl_text = f"{float(row.get('pnl_eur', 0.0)):>12,.2f}"
+            pnl = _colorize_number(row.get("pnl_eur", 0.0), pnl_text)
+            trades = f"{int(row.get('trade_count', 0)):>6}"
+            score = f"{float(row.get('score', 0.0)):>10.2f}"
+            rows.append(
+                f"{_fit(row.get('symbol', '-'), 6):<6}"
+                f"{_fit(row.get('signal', '-'), 6):<6}"
+                f"{pnl}"
+                f"{trades}"
+                f"{score}"
+            )
+            rows.append(f"  {identifiers_text(row.get('isin'), row.get('wkn'))}")
+        return rows
+
     rows = [f"{'SYM':<6}{'BONUS':>10}{'HIT':>8}{'O P/L':>12}{'TRD':>6}"]
 
     if not ranking:
@@ -204,7 +229,8 @@ def _top_scores_rows(data: dict[str, Any]) -> list[str]:
 
 
 def _portfolio_plan_rows(data: dict[str, Any]) -> list[str]:
-    plan = data["performance"]["portfolio_plan"]
+    analysis_plan = data.get("analysis", {}).get("trading_plan", [])
+    plan = analysis_plan or data["performance"]["portfolio_plan"]
     rows = [f"{'SYM':<6}{'GEW.%':>10}{'KAPITAL':>14}{'SCORE':>10}"]
 
     if not plan:

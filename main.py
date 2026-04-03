@@ -19,6 +19,7 @@ from output import (
     print_explanations,
 )
 from report_pdf import run as run_pdf_report
+from report_writer import update_latest_json_context
 from gmail_api_report import send_report_email
 from trading_engine import (
     build_trading_plan,
@@ -28,10 +29,11 @@ from trading_engine import (
 )
 from walkforward import run_walk_forward
 from performance import run_live, print_performance
+from dashboard import build_dashboard
 from dashboard_live import run_live_terminal
 from mini_trading_system import run_mini_trading_system
 from realistic_backtest import run_realistic_backtest, print_realistic_backtest_summary
-from config import DAILY_REPORT_HTML, get_active_profile_name
+from config import DAILY_REPORT_HTML, REPORTS_DIR, get_active_profile_name
 
 
 def normalize_period_input(period):
@@ -309,6 +311,18 @@ def run():
         profile_name=active_profile,
     )
     print_trading_decisions(decisions)
+
+    update_latest_json_context(
+        output_dir=REPORTS_DIR,
+        future_candidates=result.get("future_candidates", []),
+        trading_plan=plan,
+        decisions=decisions,
+    )
+    build_dashboard(
+        analysis_result=result,
+        trading_plan=plan,
+        decisions=decisions,
+    )
 
     if args.fast:
         print("\n[FAST MODE] Walk-Forward und realistischer Backtest werden uebersprungen.")

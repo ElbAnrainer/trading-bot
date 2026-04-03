@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import os
+from datetime import datetime, timezone
 from typing import Any
 
-from config import DASHBOARD_HTML, DASHBOARD_JSON, ensure_reports_dir, get_active_profile_name, get_trading_config
+from config import (
+    DASHBOARD_HTML,
+    DASHBOARD_JSON,
+    LATEST_RUN_JSON,
+    ensure_reports_dir,
+    get_active_profile_name,
+    get_trading_config,
+)
 from performance import analyze_performance
 from portfolio_state import load_portfolio_state, portfolio_summary
 from risk import risk_summary
@@ -19,6 +27,208 @@ def _safe_history_tail(state: dict[str, Any], n: int = 8) -> list[dict[str, Any]
     if not isinstance(history, list):
         return []
     return history[-n:]
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _safe_text(value: Any, default: str = "-") -> str:
+    text = str(value).strip() if value is not None else ""
+    return text if text else default
+
+
+def _company_name(item: dict[str, Any]) -> str:
+    return _safe_text(
+        item.get("company_name") or item.get("company") or item.get("symbol"),
+        "-",
+    )
+
+
+def _load_latest_run_snapshot() -> dict[str, Any]:
+    if not os.path.exists(LATEST_RUN_JSON):
+        return {}
+
+    try:
+        with open(LATEST_RUN_JSON, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return {}
+
+    return {}
+
+
+def _coerce_analysis_snapshot(
+    analysis_result: dict[str, Any] | None,
+    trading_plan: list[dict[str, Any]] | None = None,
+    decisions: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if analysis_result is None:
+        snapshot = _load_latest_run_snapshot()
+        source = "latest_run"
+    else:
+        snapshot = {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "period": analysis_result.get("period"),
+            "interval": analysis_result.get("interval"),
+            "results": analysis_result.get("results", []),
+            "portfolio": analysis_result.get("portfolio", {}),
+            "future_candidates": analysis_result.get("future_candidates", []),
+        }
+        source = "current_run"
+
+    if trading_plan is not None:
+        snapshot["trading_plan"] = trading_plan
+    if decisions is not None:
+        snapshot["decisions"] = decisions
+
+    snapshot["_source"] = source
+    return snapshot
+
+
+def _normalize_current_results(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for item in snapshot.get("results", []) or []:
+        rows.append(
+            {
+                "symbol": _safe_text(item.get("symbol")),
+                "company": _company_name(item),
+                "isin": _safe_text(item.get("isin")),
+                "wkn": _safe_text(item.get("wkn")),
+                "signal": _safe_text(item.get("signal")),
+                "native_currency": _safe_text(item.get("native_currency")),
+                "pnl_eur": _safe_float(item.get("pnl_eur")),
+                "pnl_native": _safe_float(item.get("pnl_native")),
+                "pnl_pct_eur": _safe_float(item.get("pnl_pct_eur")),
+                "trade_count": _safe_int(item.get("trade_count")),
+                "hit_rate_pct": _safe_float(item.get("hit_rate_pct")),
+                "score": _safe_float(item.get("score")),
+                "last_price_eur": _safe_float(item.get("last_price_eur")),
+                "last_price_native": _safe_float(item.get("last_price_native")),
+            }
+        )
+    return rows
+
+
+def _normalize_future_candidates(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for item in snapshot.get("future_candidates", []) or []:
+        rows.append(
+            {
+                "symbol": _safe_text(item.get("symbol")),
+                "company": _company_name(item),
+                "isin": _safe_text(item.get("isin")),
+                "wkn": _safe_text(item.get("wkn")),
+                "future_signal": _safe_text(item.get("future_signal")),
+                "score": _safe_float(item.get("score")),
+                "learned_bonus": _safe_float(item.get("learned_bonus")),
+                "learned_confidence": _safe_float(item.get("learned_confidence")),
+            }
+        )
+    return rows
+
+
+def _normalize_trading_plan(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for item in snapshot.get("trading_plan", []) or []:
+        rows.append(
+            {
+                "symbol": _safe_text(item.get("symbol")),
+                "company": _company_name(item),
+                "isin": _safe_text(item.get("isin")),
+                "wkn": _safe_text(item.get("wkn")),
+                "weight": _safe_float(item.get("weight")),
+                "capital": _safe_float(item.get("capital")),
+                "learned_score": _safe_float(item.get("learned_score")),
+            }
+        )
+    return rows
+
+
+def _normalize_simulated_portfolio(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    portfolio = snapshot.get("portfolio", {}) or {}
+    if not isinstance(portfolio, dict):
+        return []
+
+    rows = []
+    for symbol, pos in portfolio.items():
+        qty = _safe_float(pos.get("qty"))
+        price_eur = _safe_float(pos.get("price_eur"))
+        rows.append(
+            {
+                "symbol": _safe_text(symbol),
+                "company": _company_name(pos | {"symbol": symbol}),
+                "isin": _safe_text(pos.get("isin")),
+                "wkn": _safe_text(pos.get("wkn")),
+                "qty": qty,
+                "price_eur": price_eur,
+                "price_native": _safe_float(pos.get("price_native")),
+                "native_currency": _safe_text(pos.get("native_currency")),
+                "value_eur": qty * price_eur,
+            }
+        )
+    return rows
+
+
+def _normalize_orders(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    decisions = snapshot.get("decisions", {}) or {}
+    rows = []
+    for item in decisions.get("orders", []) or []:
+        rows.append(
+            {
+                "action": _safe_text(item.get("action")),
+                "symbol": _safe_text(item.get("symbol")),
+                "reason": _safe_text(item.get("reason")),
+                "capital": _safe_float(item.get("capital")),
+                "weight": _safe_float(item.get("weight")),
+                "learned_score": _safe_float(item.get("learned_score")),
+            }
+        )
+    return rows
+
+
+def _build_analysis_section(
+    analysis_result: dict[str, Any] | None = None,
+    trading_plan: list[dict[str, Any]] | None = None,
+    decisions: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    snapshot = _coerce_analysis_snapshot(analysis_result, trading_plan=trading_plan, decisions=decisions)
+
+    generated_at = _safe_text(snapshot.get("generated_at_utc"), "")
+    period = _safe_text(snapshot.get("period"))
+    interval = _safe_text(snapshot.get("interval"))
+
+    current_results = _normalize_current_results(snapshot)
+    future_candidates = _normalize_future_candidates(snapshot)
+    trading_plan_rows = _normalize_trading_plan(snapshot)
+    simulated_portfolio = _normalize_simulated_portfolio(snapshot)
+    orders = _normalize_orders(snapshot)
+
+    return {
+        "source": snapshot.get("_source", "none"),
+        "generated_at": generated_at,
+        "period": period,
+        "interval": interval,
+        "current_results": current_results,
+        "future_candidates": future_candidates,
+        "trading_plan": trading_plan_rows,
+        "simulated_portfolio": simulated_portfolio,
+        "orders": orders,
+        "drawdown_state": (snapshot.get("decisions") or {}).get("drawdown_state", {}),
+        "risk": (snapshot.get("decisions") or {}).get("risk", {}),
+    }
 
 
 def build_documentation_section() -> dict[str, Any]:
@@ -51,10 +261,20 @@ def build_documentation_section() -> dict[str, Any]:
     }
 
 
-def build_dashboard_data(initial_cash: float = 1000.0) -> dict[str, Any]:
+def build_dashboard_data(
+    initial_cash: float = 1000.0,
+    analysis_result: dict[str, Any] | None = None,
+    trading_plan: list[dict[str, Any]] | None = None,
+    decisions: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     perf = analyze_performance()
     state = load_portfolio_state(initial_cash=initial_cash)
     summary = portfolio_summary(state)
+    analysis = _build_analysis_section(
+        analysis_result=analysis_result,
+        trading_plan=trading_plan,
+        decisions=decisions,
+    )
 
     active_profile = get_active_profile_name()
     profile_cfg = get_trading_config(active_profile)
@@ -77,6 +297,7 @@ def build_dashboard_data(initial_cash: float = 1000.0) -> dict[str, Any]:
             "name": active_profile,
             "config": profile_cfg,
         },
+        "analysis": analysis,
         "performance": {
             "closed_trades": perf.get("closed_trades", 0),
             "winning_trades": perf.get("winning_trades", 0),
@@ -111,58 +332,112 @@ def _write_dashboard_json(data: dict[str, Any]) -> None:
 
 def _html_escape(value: Any) -> str:
     import html
+
     return html.escape(str(value if value is not None else "-"))
+
+
+def _analysis_source_label(source: str) -> str:
+    labels = {
+        "current_run": "Aktueller CLI-Lauf",
+        "latest_run": "Letzter gespeicherter Lauf",
+        "none": "Keine aktuelle Analyse",
+    }
+    return labels.get(source, source)
 
 
 def _write_dashboard_html(data: dict[str, Any]) -> None:
     _ensure_reports_dir()
 
     profile = data["profile"]
+    analysis = data["analysis"]
     perf = data["performance"]
     state = data["state"]
     risk = data["risk"]
     doc = data["documentation"]
 
-    ranking_rows = []
-    for row in perf.get("ranking", []):
-        bonus_text = f"{float(row.get('bonus', 0.0)):+.2f}" if "bonus" in row else "-"
-        hit_rate_text = f"{float(row.get('hit_rate', 0.0)):.2f}%"
-        avg_pnl_text = f"{float(row.get('avg_pnl', 0.0)):,.2f}"
-        learned_score_text = f"{float(row.get('learned_score', 0.0)):.2f}"
-        ranking_rows.append(
+    current_result_rows = []
+    for row in analysis.get("current_results", []):
+        pnl_text = f"{float(row.get('pnl_eur', 0.0)):,.2f} EUR"
+        score_text = f"{float(row.get('score', 0.0)):.2f}"
+        current_result_rows.append(
             "<tr>"
             f"<td>{_html_escape(row.get('symbol', '-'))}</td>"
             f"<td>{_html_escape(row.get('isin', '-'))}</td>"
             f"<td>{_html_escape(row.get('wkn', '-'))}</td>"
-            f"<td style='text-align:right'>{_html_escape(bonus_text)}</td>"
-            f"<td style='text-align:right'>{_html_escape(hit_rate_text)}</td>"
-            f"<td style='text-align:right'>{_html_escape(avg_pnl_text)}</td>"
-            f"<td style='text-align:right'>{_html_escape(row.get('trades', 0))}</td>"
-            f"<td style='text-align:right'>{_html_escape(learned_score_text)}</td>"
+            f"<td>{_html_escape(row.get('company', '-'))}</td>"
+            f"<td>{_html_escape(row.get('signal', '-'))}</td>"
+            f"<td style='text-align:right'>{_html_escape(pnl_text)}</td>"
+            f"<td style='text-align:right'>{_html_escape(row.get('trade_count', 0))}</td>"
+            f"<td style='text-align:right'>{_html_escape(score_text)}</td>"
             "</tr>"
         )
 
-    if not ranking_rows:
-        ranking_rows.append("<tr><td colspan='8'>Keine Ranking-Daten vorhanden.</td></tr>")
+    if not current_result_rows:
+        current_result_rows.append("<tr><td colspan='8'>Keine frische Analyse vorhanden.</td></tr>")
 
-    portfolio_rows = []
-    for row in perf.get("portfolio_plan", []):
-        weight_text = f"{float(row.get('weight', 0.0)):.2f}"
-        capital_text = f"{float(row.get('capital', 0.0)):,.2f} EUR"
-        learned_score_text = f"{float(row.get('learned_score', 0.0)):.2f}"
-        portfolio_rows.append(
+    candidate_rows = []
+    for row in analysis.get("future_candidates", []):
+        score_text = f"{float(row.get('score', 0.0)):.2f}"
+        learned_bonus_text = f"{float(row.get('learned_bonus', 0.0)):+.2f}"
+        candidate_rows.append(
             "<tr>"
             f"<td>{_html_escape(row.get('symbol', '-'))}</td>"
             f"<td>{_html_escape(row.get('isin', '-'))}</td>"
             f"<td>{_html_escape(row.get('wkn', '-'))}</td>"
+            f"<td>{_html_escape(row.get('company', '-'))}</td>"
+            f"<td>{_html_escape(row.get('future_signal', '-'))}</td>"
+            f"<td style='text-align:right'>{_html_escape(score_text)}</td>"
+            f"<td style='text-align:right'>{_html_escape(learned_bonus_text)}</td>"
+            "</tr>"
+        )
+
+    if not candidate_rows:
+        candidate_rows.append("<tr><td colspan='7'>Keine aktuellen Kaufkandidaten verfügbar.</td></tr>")
+
+    plan_rows = []
+    plan_source = analysis.get("trading_plan") or perf.get("portfolio_plan", [])
+    plan_title = "Trading-Plan"
+    if not analysis.get("trading_plan"):
+        plan_title = "Historischer Portfolio-Plan"
+
+    for row in plan_source:
+        weight_text = f"{float(row.get('weight', 0.0)):.2f}"
+        capital_text = f"{float(row.get('capital', 0.0)):,.2f} EUR"
+        learned_score_text = f"{float(row.get('learned_score', 0.0)):.2f}"
+        plan_rows.append(
+            "<tr>"
+            f"<td>{_html_escape(row.get('symbol', '-'))}</td>"
+            f"<td>{_html_escape(row.get('isin', '-'))}</td>"
+            f"<td>{_html_escape(row.get('wkn', '-'))}</td>"
+            f"<td>{_html_escape(row.get('company', row.get('symbol', '-')))}</td>"
             f"<td style='text-align:right'>{_html_escape(weight_text)}</td>"
             f"<td style='text-align:right'>{_html_escape(capital_text)}</td>"
             f"<td style='text-align:right'>{_html_escape(learned_score_text)}</td>"
             "</tr>"
         )
 
-    if not portfolio_rows:
-        portfolio_rows.append("<tr><td colspan='6'>Kein Portfolio-Plan verfügbar.</td></tr>")
+    if not plan_rows:
+        plan_rows.append("<tr><td colspan='7'>Kein Trading-Plan verfügbar.</td></tr>")
+
+    simulated_portfolio_rows = []
+    for row in analysis.get("simulated_portfolio", []):
+        qty_text = f"{float(row.get('qty', 0.0)):.2f}"
+        price_text = f"{float(row.get('price_eur', 0.0)):,.2f} EUR"
+        value_text = f"{float(row.get('value_eur', 0.0)):,.2f} EUR"
+        simulated_portfolio_rows.append(
+            "<tr>"
+            f"<td>{_html_escape(row.get('symbol', '-'))}</td>"
+            f"<td>{_html_escape(row.get('isin', '-'))}</td>"
+            f"<td>{_html_escape(row.get('wkn', '-'))}</td>"
+            f"<td>{_html_escape(row.get('company', '-'))}</td>"
+            f"<td style='text-align:right'>{_html_escape(qty_text)}</td>"
+            f"<td style='text-align:right'>{_html_escape(price_text)}</td>"
+            f"<td style='text-align:right'>{_html_escape(value_text)}</td>"
+            "</tr>"
+        )
+
+    if not simulated_portfolio_rows:
+        simulated_portfolio_rows.append("<tr><td colspan='7'>Kein simuliertes Depot aus dem letzten Analyse-Lauf verfügbar.</td></tr>")
 
     history_rows = []
     for item in state.get("history_tail", []):
@@ -194,6 +469,7 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
         history_rows.append("<tr><td colspan='7'>Keine Events vorhanden.</td></tr>")
 
     cfg = profile.get("config", {})
+    analysis_generated_at = analysis.get("generated_at") or state.get("updated_at") or data.get("timestamp")
 
     html = f"""<!DOCTYPE html>
 <html lang="de">
@@ -265,7 +541,14 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
     <div class="card">
       <h1>Trading Dashboard</h1>
       <p class="muted">Nur Simulation • Keine echten Orders • Keine Anlageberatung</p>
-      <p class="muted">Letztes Update: {_html_escape(state.get('updated_at') or data.get('timestamp'))}</p>
+      <p class="muted">Letztes Update: {_html_escape(analysis_generated_at)}</p>
+    </div>
+
+    <div class="card">
+      <h2>Aktive Analyse</h2>
+      <p><strong>Quelle:</strong> {_html_escape(_analysis_source_label(str(analysis.get('source', 'none'))))}</p>
+      <p><strong>Zeitraum:</strong> {_html_escape(analysis.get('period', '-'))} | <strong>Intervall:</strong> {_html_escape(analysis.get('interval', '-'))}</p>
+      <p><strong>Ergebnisse:</strong> {_html_escape(len(analysis.get('current_results', [])))} | <strong>Kandidaten:</strong> {_html_escape(len(analysis.get('future_candidates', [])))} | <strong>Orders:</strong> {_html_escape(len(analysis.get('orders', [])))}</p>
     </div>
 
     <div class="card">
@@ -302,7 +585,7 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
         <div class="kpi"><div class="label">Equity</div><div class="value">{float(state['last_equity_eur']):,.2f} EUR</div></div>
         <div class="kpi"><div class="label">Peak Equity</div><div class="value">{float(state['peak_equity_eur']):,.2f} EUR</div></div>
         <div class="kpi"><div class="label">Drawdown</div><div class="value">{float(state['drawdown_pct']):.2f}%</div></div>
-        <div class="kpi"><div class="label">Trefferquote</div><div class="value">{float(perf['hit_rate']):.2f}%</div></div>
+        <div class="kpi"><div class="label">Historische Trefferquote</div><div class="value">{float(perf['hit_rate']):.2f}%</div></div>
       </div>
     </div>
 
@@ -312,41 +595,82 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
     </div>
 
     <div class="card">
-      <h2>Top Scores</h2>
+      <h2>Aktuelle Analyse-Ergebnisse</h2>
       <table>
         <thead>
           <tr>
             <th>Symbol</th>
             <th>ISIN</th>
             <th>WKN</th>
-            <th>Bonus</th>
-            <th>Treffer</th>
-            <th>Ø P/L</th>
+            <th>Name</th>
+            <th>Signal</th>
+            <th>P/L EUR</th>
             <th>Trades</th>
-            <th>Learned</th>
+            <th>Score</th>
           </tr>
         </thead>
         <tbody>
-          {''.join(ranking_rows)}
+          {''.join(current_result_rows)}
         </tbody>
       </table>
     </div>
 
     <div class="card">
-      <h2>Portfolio-Plan</h2>
+      <h2>Aktuelle Kaufkandidaten</h2>
       <table>
         <thead>
           <tr>
             <th>Symbol</th>
             <th>ISIN</th>
             <th>WKN</th>
+            <th>Name</th>
+            <th>Signal</th>
+            <th>Score</th>
+            <th>Learned</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(candidate_rows)}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>{_html_escape(plan_title)}</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
+            <th>Name</th>
             <th>Gewicht</th>
             <th>Kapital</th>
             <th>Learned</th>
           </tr>
         </thead>
         <tbody>
-          {''.join(portfolio_rows)}
+          {''.join(plan_rows)}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Simuliertes Depot (aktueller Lauf)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>ISIN</th>
+            <th>WKN</th>
+            <th>Name</th>
+            <th>Qty</th>
+            <th>Kurs EUR</th>
+            <th>Wert EUR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(simulated_portfolio_rows)}
         </tbody>
       </table>
     </div>
@@ -379,12 +703,21 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
         f.write(html)
 
 
-def build_dashboard(initial_cash: float = 1000.0) -> dict[str, Any]:
+def build_dashboard(
+    initial_cash: float = 1000.0,
+    analysis_result: dict[str, Any] | None = None,
+    trading_plan: list[dict[str, Any]] | None = None,
+    decisions: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
-    Kompatibel zu analysis_engine.py:
     Baut Dashboard-Daten und schreibt JSON + HTML.
     """
-    data = build_dashboard_data(initial_cash=initial_cash)
+    data = build_dashboard_data(
+        initial_cash=initial_cash,
+        analysis_result=analysis_result,
+        trading_plan=trading_plan,
+        decisions=decisions,
+    )
     _write_dashboard_json(data)
     _write_dashboard_html(data)
     return data

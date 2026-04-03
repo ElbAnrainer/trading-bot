@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from report_writer import save_run_outputs
+from report_writer import save_run_outputs, update_latest_json_context
 
 
 def test_save_run_outputs_creates_files(tmp_path):
@@ -40,6 +40,16 @@ def test_save_run_outputs_creates_files(tmp_path):
         interval="5m",
         results=results,
         portfolio=portfolio,
+        future_candidates=[
+            {
+                "symbol": "MSFT",
+                "company_name": "Microsoft Corporation",
+                "isin": "US5949181045",
+                "wkn": "870747",
+                "future_signal": "WATCH",
+                "score": 55.0,
+            }
+        ],
     )
 
     latest_json = Path(tmp_path) / "latest_run.json"
@@ -54,6 +64,47 @@ def test_save_run_outputs_creates_files(tmp_path):
     assert data["period"] == "1mo"
     assert len(data["results"]) == 1
     assert data["results"][0]["symbol"] == "AAPL"
+    assert data["future_candidates"][0]["symbol"] == "MSFT"
     html = dashboard_html.read_text(encoding="utf-8")
     assert "US0378331005" in html
     assert "865985" in html
+
+
+def test_update_latest_json_context_adds_plan_and_decisions(tmp_path):
+    save_run_outputs(
+        output_dir=tmp_path,
+        period="1mo",
+        interval="5m",
+        results=[],
+        portfolio={},
+    )
+
+    update_latest_json_context(
+        tmp_path,
+        trading_plan=[
+            {
+                "symbol": "NVDA",
+                "company": "NVIDIA Corporation",
+                "isin": "US67066G1040",
+                "wkn": "918422",
+                "weight": 0.2,
+                "capital": 200.0,
+                "learned_score": 77.0,
+            }
+        ],
+        decisions={
+            "orders": [
+                {
+                    "action": "BUY",
+                    "symbol": "NVDA",
+                    "reason": "WATCH_TOP_SELECTION",
+                    "capital": 200.0,
+                    "learned_score": 77.0,
+                }
+            ]
+        },
+    )
+
+    data = json.loads((tmp_path / "latest_run.json").read_text(encoding="utf-8"))
+    assert data["trading_plan"][0]["symbol"] == "NVDA"
+    assert data["decisions"]["orders"][0]["action"] == "BUY"
