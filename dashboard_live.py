@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import select
 import sys
 import termios
@@ -13,6 +14,8 @@ from dashboard import build_dashboard_data
 
 
 REFRESH_SECONDS = 2.0
+TWO_COLUMN_MIN_WIDTH = 140
+COLUMN_GAP = 3
 
 RESET = "\033[0m"
 BOLD = "\033[1m"
@@ -22,6 +25,8 @@ YELLOW = "\033[93m"
 CYAN = "\033[96m"
 GREY = "\033[90m"
 
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
 
 def _terminal_width(default: int = 120) -> int:
     try:
@@ -30,13 +35,61 @@ def _terminal_width(default: int = 120) -> int:
         return default
 
 
-def _line(char: str = "=") -> str:
-    return char * _terminal_width()
+def _line(char: str = "=", width: int | None = None) -> str:
+    return char * (width or _terminal_width())
 
 
 def _clear() -> None:
     sys.stdout.write("\033[2J\033[H")
     sys.stdout.flush()
+
+
+def _strip_ansi(text: Any) -> str:
+    return ANSI_RE.sub("", str(text))
+
+
+def _visible_len(text: Any) -> int:
+    return len(_strip_ansi(text))
+
+
+def _truncate_ansi(text: Any, width: int) -> str:
+    text = str(text)
+    if width <= 0:
+        return ""
+    if _visible_len(text) <= width:
+        return text
+    if width == 1:
+        return "."
+
+    target = width - 1
+    out: list[str] = []
+    visible = 0
+    idx = 0
+    saw_ansi = False
+
+    while idx < len(text) and visible < target:
+        if text[idx] == "\033" and idx + 1 < len(text) and text[idx + 1] == "[":
+            saw_ansi = True
+            end = idx + 2
+            while end < len(text) and text[end] != "m":
+                end += 1
+            if end < len(text):
+                out.append(text[idx : end + 1])
+                idx = end + 1
+                continue
+        out.append(text[idx])
+        visible += 1
+        idx += 1
+
+    out.append("…")
+    if saw_ansi:
+        out.append(RESET)
+    return "".join(out)
+
+
+def _pad_ansi(text: Any, width: int) -> str:
+    clipped = _truncate_ansi(text, width)
+    return clipped + (" " * max(0, width - _visible_len(clipped)))
 
 
 def _fit(text: Any, width: int) -> str:
@@ -69,130 +122,111 @@ def _colorize_number(value: float, text: str) -> str:
     return text
 
 
-def _header(title: str, refreshed_at: str) -> None:
-    width = _terminal_width()
-    profile_name = get_active_profile_name()
-    print(_line("="))
-    print(f"{BOLD}{title.center(width)}{RESET}")
-    print(_line("-"))
-    print(
-        f"{CYAN}Live-Terminal{RESET} | "
-        f"Profil: {profile_name} | "
-        f"Aktualisiert: {refreshed_at} | "
-        f"{YELLOW}q = Quit{RESET}"
-    )
-    print(_line("="))
+def _header_lines(title: str, refreshed_at: str, width: int, profile_name: str) -> list[str]:
+    return [
+        _line("=", width),
+        f"{BOLD}{title.center(width)}{RESET}",
+        _line("-", width),
+        (
+            f"{CYAN}Live-Terminal{RESET} | "
+            f"Profil: {profile_name} | "
+            f"Aktualisiert: {refreshed_at} | "
+            f"{YELLOW}q = Quit{RESET}"
+        ),
+        _line("=", width),
+    ]
 
 
-def _render_profile_info() -> None:
-    profile_name = get_active_profile_name()
-    cfg = get_trading_config(profile_name)
-
-    print(f"{BOLD}AKTIVES PROFIL{RESET}")
-    print(
-        f"Name: {profile_name} | "
-        f"Max Positionen: {cfg.get('max_positions')} | "
-        f"Risk/Trade: {float(cfg.get('risk_per_trade_pct', 0.0)):.2%} | "
-        f"Max Portfolio-Risk: {float(cfg.get('max_portfolio_risk_pct', 0.0)):.2%}"
-    )
-    print(
-        f"Min Hold: {cfg.get('min_hold_bars')} | "
-        f"Cooldown: {cfg.get('cooldown_bars')} | "
-        f"Max Trades/Woche: {cfg.get('max_new_trades_per_week')} | "
-        f"Min Edge: {float(cfg.get('min_expected_edge_pct', 0.0)):.2%}"
-    )
-    print(_line("-"))
+def _box(title: str, rows: list[str], width: int) -> list[str]:
+    width = max(28, width)
+    inner = width - 4
+    lines = [
+        "+" + "-" * (width - 2) + "+",
+        f"| {_pad_ansi(f'{BOLD}{title}{RESET}', inner)} |",
+        "|" + "-" * (width - 2) + "|",
+    ]
+    lines.extend(f"| {_pad_ansi(row, inner)} |" for row in rows)
+    lines.append("+" + "-" * (width - 2) + "+")
+    return lines
 
 
-def _render_systemstatus(data: dict[str, Any]) -> None:
+def _profile_rows(profile_name: str, cfg: dict[str, Any]) -> list[str]:
+    return [
+        f"Name: {profile_name}",
+        f"Max Positionen: {cfg.get('max_positions')}",
+        f"Risk/Trade: {float(cfg.get('risk_per_trade_pct', 0.0)):.2%}",
+        f"Max Portfolio-Risk: {float(cfg.get('max_portfolio_risk_pct', 0.0)):.2%}",
+        f"Min Hold: {cfg.get('min_hold_bars')} | Cooldown: {cfg.get('cooldown_bars')}",
+        (
+            f"Max Trades/Woche: {cfg.get('max_new_trades_per_week')} | "
+            f"Min Edge: {float(cfg.get('min_expected_edge_pct', 0.0)):.2%}"
+        ),
+    ]
+
+
+def _systemstatus_rows(data: dict[str, Any]) -> list[str]:
     perf = data["performance"]
     state = data["state"]
 
-    print(f"{BOLD}SYSTEMSTATUS{RESET}")
-    print(
-        f"Cash: {_fmt_money(state['cash_eur'])} | "
-        f"Investiert: {_fmt_money(state['total_invested_eur'])} | "
-        f"Equity: {_fmt_money(state['last_equity_eur'])}"
-    )
-    print(
-        f"Peak: {_fmt_money(state['peak_equity_eur'])} | "
-        f"Drawdown: {_fmt_pct(state['drawdown_pct'])} | "
-        f"Positionen: {state['positions']}"
-    )
-    print(
-        f"Trades: {perf['closed_trades']} | "
-        f"Trefferquote: {_fmt_pct(perf['hit_rate'])} | "
-        f"P/L: {_colorize_number(perf['realized_pnl'], _fmt_money(perf['realized_pnl']))}"
-    )
-    print(
-        f"Ø Trade: {_colorize_number(perf['avg_trade_pnl'], _fmt_money(perf['avg_trade_pnl']))} | "
-        f"Updated: {state.get('updated_at') or '-'}"
-    )
-    print(_line("-"))
+    return [
+        f"Cash: {_fmt_money(state['cash_eur'])}",
+        f"Investiert: {_fmt_money(state['total_invested_eur'])}",
+        f"Equity: {_fmt_money(state['last_equity_eur'])}",
+        f"Peak: {_fmt_money(state['peak_equity_eur'])}",
+        f"Drawdown: {_fmt_pct(state['drawdown_pct'])} | Positionen: {state['positions']}",
+        f"Trades: {perf['closed_trades']} | Trefferquote: {_fmt_pct(perf['hit_rate'])}",
+        f"P/L: {_colorize_number(perf['realized_pnl'], _fmt_money(perf['realized_pnl']))}",
+        f"O Trade: {_colorize_number(perf['avg_trade_pnl'], _fmt_money(perf['avg_trade_pnl']))}",
+        f"Updated: {state.get('updated_at') or '-'}",
+    ]
 
 
-def _render_top_scores(data: dict[str, Any]) -> None:
+def _top_scores_rows(data: dict[str, Any]) -> list[str]:
     ranking = data["performance"]["ranking"]
-
-    print(f"{BOLD}TOP SCORES{RESET}")
-    header = f"{'SYM':<6}{'BONUS':>10}{'TREFFER':>10}{'Ø P/L':>14}{'TRADES':>8}"
-    print(header)
-    print("-" * len(header))
+    rows = [f"{'SYM':<6}{'BONUS':>10}{'HIT':>8}{'O P/L':>12}{'TRD':>6}"]
 
     if not ranking:
-        print("Keine Ranking-Daten verfügbar.")
-        print(_line("-"))
-        return
+        rows.append("Keine Ranking-Daten verfugbar.")
+        return rows
 
     for row in ranking[:8]:
         bonus_text = f"{float(row.get('bonus', 0.0)):+10.2f}"
         bonus = _colorize_number(row.get("bonus", 0.0), bonus_text)
-        hit = f"{float(row.get('hit_rate', 0.0)):>9.1f}%"
-        avg_pnl_text = f"{float(row.get('avg_pnl', 0.0)):>14,.2f}"
+        hit = f"{float(row.get('hit_rate', 0.0)):>7.1f}%"
+        avg_pnl_text = f"{float(row.get('avg_pnl', 0.0)):>12,.2f}"
         avg_pnl = _colorize_number(row.get("avg_pnl", 0.0), avg_pnl_text)
-        trades = f"{int(row.get('trades', 0)):>8}"
+        trades = f"{int(row.get('trades', 0)):>6}"
+        rows.append(f"{_fit(row.get('symbol', '-'), 6):<6}{bonus}{hit}{avg_pnl}{trades}")
 
-        print(f"{row.get('symbol', '-'):<6}{bonus}{hit}{avg_pnl}{trades}")
-
-    print(_line("-"))
+    return rows
 
 
-def _render_portfolio_plan(data: dict[str, Any]) -> None:
+def _portfolio_plan_rows(data: dict[str, Any]) -> list[str]:
     plan = data["performance"]["portfolio_plan"]
-
-    print(f"{BOLD}PORTFOLIO-PLAN{RESET}")
-    header = f"{'SYM':<6}{'GEWICHT':>10}{'KAPITAL':>14}{'SCORE':>14}"
-    print(header)
-    print("-" * len(header))
+    rows = [f"{'SYM':<6}{'GEW.%':>10}{'KAPITAL':>14}{'SCORE':>10}"]
 
     if not plan:
-        print("Kein Portfolio-Plan verfügbar.")
-        print(_line("-"))
-        return
+        rows.append("Kein Portfolio-Plan verfugbar.")
+        return rows
 
     for row in plan[:8]:
-        print(
-            f"{row.get('symbol', '-'):<6}"
+        rows.append(
+            f"{_fit(row.get('symbol', '-'), 6):<6}"
             f"{float(row.get('weight', 0.0)):>10.2f}"
-            f"{float(row.get('capital', 0.0)):>14.2f} EUR"
-            f"{float(row.get('learned_score', 0.0)):>14.2f}"
+            f"{float(row.get('capital', 0.0)):>14.2f}"
+            f"{float(row.get('learned_score', 0.0)):>10.2f}"
         )
 
-    print(_line("-"))
+    return rows
 
 
-def _render_open_positions(data: dict[str, Any]) -> None:
+def _open_positions_rows(data: dict[str, Any]) -> list[str]:
     positions = data["state"]["open_positions"]
-
-    print(f"{BOLD}OFFENE POSITIONEN{RESET}")
-    header = f"{'SYM':<8}{'ENTRY':>12}{'CURRENT':>12}{'SHARES':>12}{'INVESTED':>14}"
-    print(header)
-    print("-" * len(header))
+    rows = [f"{'SYM':<7}{'ENTRY':>10}{'CURR':>10}{'SHARES':>10}{'INV':>11}"]
 
     if not positions:
-        print("Keine offenen Positionen.")
-        print(_line("-"))
-        return
+        rows.append("Keine offenen Positionen.")
+        return rows
 
     for sym, pos in positions.items():
         entry = float(pos.get("entry_price", 0.0))
@@ -200,29 +234,31 @@ def _render_open_positions(data: dict[str, Any]) -> None:
         shares = float(pos.get("shares", 0.0))
         invested = float(pos.get("invested_eur", 0.0))
 
-        print(
-            f"{sym:<8}"
-            f"{entry:>12.2f}"
-            f"{current:>12.2f}"
-            f"{shares:>12.4f}"
-            f"{invested:>14.2f}"
+        rows.append(
+            f"{_fit(sym, 7):<7}"
+            f"{entry:>10.2f}"
+            f"{current:>10.2f}"
+            f"{shares:>10.3f}"
+            f"{invested:>11.2f}"
         )
 
-    print(_line("-"))
+    return rows
 
 
-def _render_last_events(data: dict[str, Any]) -> None:
+def _last_events_rows(data: dict[str, Any], content_width: int) -> list[str]:
     history = data["state"]["history_tail"]
 
-    print(f"{BOLD}LETZTE EVENTS{RESET}")
-    header = f"{'ZEIT':<20}{'TYP':<8}{'SYM':<8}{'PREIS':>12}{'INFO':>22}"
-    print(header)
-    print("-" * len(header))
+    time_w = 14 if content_width < 66 else 16
+    type_w = 6
+    sym_w = 6
+    price_w = 9
+    info_w = max(10, content_width - time_w - type_w - sym_w - price_w)
+
+    rows = [f"{'ZEIT':<{time_w}}{'TYP':<{type_w}}{'SYM':<{sym_w}}{'PREIS':>{price_w}}{'INFO':>{info_w}}"]
 
     if not history:
-        print("Keine Events vorhanden.")
-        print(_line("="))
-        return
+        rows.append("Keine Events vorhanden.")
+        return rows
 
     for item in history[-8:]:
         price = item.get("price")
@@ -231,15 +267,77 @@ def _render_last_events(data: dict[str, Any]) -> None:
         if info is None and "pnl_eur" in item:
             info = f"P/L {float(item.get('pnl_eur', 0.0)):.2f} EUR"
 
-        print(
-            f"{_fit(item.get('time', '-'), 20):<20}"
-            f"{_fit(item.get('type', '-'), 8):<8}"
-            f"{_fit(item.get('symbol', '-'), 8):<8}"
-            f"{price_str:>12}"
-            f"{_fit(str(info or '-'), 22):>22}"
+        rows.append(
+            f"{_fit(item.get('time', '-'), time_w):<{time_w}}"
+            f"{_fit(item.get('type', '-'), type_w):<{type_w}}"
+            f"{_fit(item.get('symbol', '-'), sym_w):<{sym_w}}"
+            f"{_fit(price_str, price_w):>{price_w}}"
+            f"{_fit(str(info or '-'), info_w):>{info_w}}"
         )
 
-    print(_line("="))
+    return rows
+
+
+def _stack_boxes(boxes: list[list[str]]) -> list[str]:
+    lines: list[str] = []
+    for idx, box in enumerate(boxes):
+        if idx:
+            lines.append("")
+        lines.extend(box)
+    return lines
+
+
+def _merge_columns(left_lines: list[str], right_lines: list[str], left_width: int, right_width: int) -> list[str]:
+    merged: list[str] = []
+    max_lines = max(len(left_lines), len(right_lines))
+
+    for idx in range(max_lines):
+        left = left_lines[idx] if idx < len(left_lines) else ""
+        right = right_lines[idx] if idx < len(right_lines) else ""
+        merged.append(f"{_pad_ansi(left, left_width)}{' ' * COLUMN_GAP}{_pad_ansi(right, right_width)}")
+
+    return merged
+
+
+def _build_live_terminal_lines(data: dict[str, Any], refreshed_at: str, width: int | None = None) -> list[str]:
+    width = width or _terminal_width()
+    profile_name = get_active_profile_name()
+    cfg = get_trading_config(profile_name)
+
+    lines = _header_lines(" MINI TRADING LIVE TERMINAL ", refreshed_at, width, profile_name)
+
+    if width >= TWO_COLUMN_MIN_WIDTH:
+        left_width = (width - COLUMN_GAP) // 2
+        right_width = width - COLUMN_GAP - left_width
+
+        left_boxes = [
+            _box("AKTIVES PROFIL", _profile_rows(profile_name, cfg), left_width),
+            _box("SYSTEMSTATUS", _systemstatus_rows(data), left_width),
+            _box("TOP SCORES", _top_scores_rows(data), left_width),
+        ]
+        right_boxes = [
+            _box("PORTFOLIO-PLAN", _portfolio_plan_rows(data), right_width),
+            _box("OFFENE POSITIONEN", _open_positions_rows(data), right_width),
+            _box("LETZTE EVENTS", _last_events_rows(data, right_width - 4), right_width),
+        ]
+        lines.extend(_merge_columns(_stack_boxes(left_boxes), _stack_boxes(right_boxes), left_width, right_width))
+        return lines
+
+    stacked_boxes = [
+        _box("AKTIVES PROFIL", _profile_rows(profile_name, cfg), width),
+        _box("SYSTEMSTATUS", _systemstatus_rows(data), width),
+        _box("TOP SCORES", _top_scores_rows(data), width),
+        _box("PORTFOLIO-PLAN", _portfolio_plan_rows(data), width),
+        _box("OFFENE POSITIONEN", _open_positions_rows(data), width),
+        _box("LETZTE EVENTS", _last_events_rows(data, width - 4), width),
+    ]
+
+    for idx, box in enumerate(stacked_boxes):
+        if idx:
+            lines.append("")
+        lines.extend(box)
+
+    return lines
 
 
 def render_live_terminal_once() -> None:
@@ -247,13 +345,8 @@ def render_live_terminal_once() -> None:
     refreshed_at = time.strftime("%Y-%m-%d %H:%M:%S")
 
     _clear()
-    _header(" MINI TRADING LIVE TERMINAL ", refreshed_at)
-    _render_profile_info()
-    _render_systemstatus(data)
-    _render_top_scores(data)
-    _render_portfolio_plan(data)
-    _render_open_positions(data)
-    _render_last_events(data)
+    for line in _build_live_terminal_lines(data, refreshed_at):
+        print(line)
 
 
 def _read_key_nonblocking(timeout: float = 0.1) -> str | None:
