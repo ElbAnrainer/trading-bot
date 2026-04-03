@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 from statistics import mean
 
-from config import ROOT_TRADING_JOURNAL_CSV, TRADING_JOURNAL_CSV, LEGACY_TRADING_JOURNAL_CSV
+from config import TRADING_JOURNAL_CSV
 from terminal_ui import box, colorize
 from live_table import run_live_table
 
@@ -22,8 +22,6 @@ except:
 
 JOURNAL_PATHS = [
     TRADING_JOURNAL_CSV,
-    LEGACY_TRADING_JOURNAL_CSV,
-    ROOT_TRADING_JOURNAL_CSV,
 ]
 
 

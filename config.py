@@ -55,17 +55,6 @@ LEARNING_MODEL_JSON = os.path.join(CACHE_DIR, "learned_score_model.json")
 METADATA_CACHE_JSON = os.path.join(CACHE_DIR, "ticker_metadata.json")
 MARKET_DATA_CACHE_DIR = os.path.join(CACHE_DIR, "market_data")
 
-LEGACY_TRADING_JOURNAL_CSV = os.path.join(PROJECT_REPORTS_DIR, "trading_journal.csv")
-ROOT_TRADING_JOURNAL_CSV = os.path.join(PROJECT_ROOT, "trading_journal.csv")
-LEGACY_LEARNED_SCORES_JSON = os.path.join(PROJECT_REPORTS_DIR, "learned_scores.json")
-LEGACY_PORTFOLIO_STATE_JSON = os.path.join(PROJECT_REPORTS_DIR, "portfolio_state.json")
-LEGACY_REALISTIC_BACKTEST_JSON = os.path.join(PROJECT_REPORTS_DIR, "realistic_backtest_latest.json")
-LEGACY_STATE_FILE = os.path.join(PROJECT_REPORTS_DIR, "state.json")
-LEGACY_BROKER_FILE = os.path.join(PROJECT_REPORTS_DIR, "broker.json")
-LEGACY_DASHBOARD_JSON = os.path.join(PROJECT_REPORTS_DIR, "dashboard_latest.json")
-LEGACY_DASHBOARD_HTML = os.path.join(PROJECT_REPORTS_DIR, "dashboard_latest.html")
-LEGACY_PROFILE_FILE = os.path.join(PROJECT_REPORTS_DIR, "active_profile.txt")
-
 BASE_CURRENCY = "EUR"
 
 PERIOD = "1mo"
@@ -235,11 +224,10 @@ def _normalize_profile_name(profile_name: str | None) -> str:
 
 def get_active_profile_name() -> str:
     try:
-        for candidate in (_PROFILE_FILE, LEGACY_PROFILE_FILE):
-            if os.path.exists(candidate):
-                value = open(candidate, "r", encoding="utf-8").read().strip().lower()
-                if value in TRADING_PROFILES:
-                    return value
+        if os.path.exists(_PROFILE_FILE):
+            value = open(_PROFILE_FILE, "r", encoding="utf-8").read().strip().lower()
+            if value in TRADING_PROFILES:
+                return value
     except Exception:
         pass
     return DEFAULT_PROFILE_NAME

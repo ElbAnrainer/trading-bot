@@ -24,6 +24,7 @@ Wichtige Einstiegspunkte und Kernmodule:
 - `main.py` -> Haupt-CLI
 - `run.sh` -> lokaler Launcher / interaktiver Terminal-Flow
 - `run_walk_forward.sh` -> kanonischer Walk-Forward-Skriptstart
+- `migrate_runtime_data.py` -> einmalige Migration alter Repo-Laufzeitdaten
 - `realistic_backtest.py` -> realistischer Portfolio-Backtest
 - `mini_trading_system.py` -> persistenter Mini-Trading-Workflow
 - `trading_engine.py` -> Buy-/Sell-Planung
@@ -77,6 +78,8 @@ Berechtigungsprobleme zu vermeiden.
   Tokens committen.
 - Laufzeitpfade immer ueber `config.py` und `TRADING_BOT_DATA_DIR` behandeln,
   nicht ueber hart verdrahtete Repo-Root-Pfade.
+- Altdaten nicht ueber stille Lesefallbacks retten; stattdessen
+  `migrate_runtime_data.py` fuer die einmalige Uebernahme verwenden.
 - Mailversand existiert (`gmail_api_report.py`, `--mail`, `.env`-Werte), soll
   aber nicht in Tests oder Smoke-Checks ausgeloest werden.
 - Generierte Dateien im konfigurierten `REPORTS_DIR` nicht manuell pflegen,

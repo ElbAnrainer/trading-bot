@@ -65,10 +65,19 @@ Der Speicherort kann ueber `TRADING_BOT_DATA_DIR` ueberschrieben werden:
 export TRADING_BOT_DATA_DIR="$HOME/trading-bot-data"
 ```
 
+Bestehende Laufzeitdaten aus alten Repo-Pfaden lassen sich einmalig migrieren:
+
+```bash
+python migrate_runtime_data.py
+python migrate_runtime_data.py --apply
+```
+
 In CI wird der Datenordner bewusst auf den Workspace gesetzt, damit Artefakte
 weiter unter `reports/` im Job veroeffentlicht werden koennen.
 
-## Nützliche Befehle
+Mehr dazu steht in `docs/operations/runtime-data.md`.
+
+## Nuetzliche Befehle
 
 ```bash
 ./.venv/bin/python -m pytest -p no:cacheprovider -q

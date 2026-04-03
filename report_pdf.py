@@ -17,11 +17,8 @@ from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, S
 
 from config import (
     CHART_PATH as DEFAULT_CHART_PATH,
-    LEGACY_REALISTIC_BACKTEST_JSON,
-    LEGACY_TRADING_JOURNAL_CSV,
     REALISTIC_BACKTEST_JSON as DEFAULT_REALISTIC_BACKTEST_JSON,
     REPORTS_DIR as DEFAULT_REPORTS_DIR,
-    ROOT_TRADING_JOURNAL_CSV,
     TRADING_JOURNAL_CSV,
     TRADING_REPORT_PDF as DEFAULT_LATEST_PDF_PATH,
     ensure_reports_dir,
@@ -33,8 +30,6 @@ from config import (
 REPORTS_DIR = DEFAULT_REPORTS_DIR
 JOURNAL_CANDIDATES = [
     TRADING_JOURNAL_CSV,
-    LEGACY_TRADING_JOURNAL_CSV,
-    ROOT_TRADING_JOURNAL_CSV,
 ]
 REALISTIC_BACKTEST_JSON = DEFAULT_REALISTIC_BACKTEST_JSON
 
@@ -102,17 +97,14 @@ def load_trades() -> list[dict[str, Any]]:
 
 
 def load_realistic_backtest() -> dict[str, Any] | None:
-    for path in (REALISTIC_BACKTEST_JSON, LEGACY_REALISTIC_BACKTEST_JSON):
-        if not os.path.exists(path):
-            continue
+    if not os.path.exists(REALISTIC_BACKTEST_JSON):
+        return None
 
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            continue
-
-    return None
+    try:
+        with open(REALISTIC_BACKTEST_JSON, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
 def calculate_metrics(trades: list[dict[str, Any]], initial_capital: float = 10_000.0) -> dict[str, Any]:
