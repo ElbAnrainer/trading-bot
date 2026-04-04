@@ -209,7 +209,10 @@ def simulate_trading_decisions(
                 continue
 
             candidate = candidate_by_symbol.get(symbol)
-            signal = candidate.get("future_signal") if candidate else "WATCH"
+            if not candidate:
+                continue
+
+            signal = candidate.get("future_signal", "WATCH")
 
             if signal not in ("BUY", "WATCH"):
                 continue

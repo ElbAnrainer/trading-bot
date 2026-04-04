@@ -93,3 +93,39 @@ def test_simulate_trading_decisions_blocks_new_buys_on_profile_drawdown(monkeypa
     assert decisions["orders"] == []
     assert decisions["drawdown_state"]["trading_blocked"] is True
     assert decisions["risk"]["max_drawdown_pct"] == 0.10
+
+
+def test_simulate_trading_decisions_only_buys_snapshot_candidates(monkeypatch):
+    ranking = [
+        {"symbol": "AAA", "learned_score": 80.0},
+        {"symbol": "BBB", "learned_score": 60.0},
+    ]
+    cfg = _profile(max_positions=2, max_position_pct=0.50, min_trade_eur=100.0)
+
+    monkeypatch.setattr(te, "analyze_performance", lambda: {"ranking": ranking, "realized_pnl": 0.0})
+    monkeypatch.setattr(te, "get_trading_config", lambda profile_name=None: cfg)
+    monkeypatch.setattr(risk, "get_trading_config", lambda profile_name=None: cfg)
+
+    decisions = te.simulate_trading_decisions(
+        analysis_result={
+            "future_candidates": [
+                {"symbol": "AAA", "future_signal": "WATCH"},
+            ]
+        },
+        total_capital=1000.0,
+        current_positions={},
+        peak_equity=1000.0,
+        top_n=2,
+        profile_name="test",
+    )
+
+    assert decisions["orders"] == [
+        {
+            "action": "BUY",
+            "symbol": "AAA",
+            "reason": "WATCH_TOP_SELECTION",
+            "capital": 500.0,
+            "weight": 0.5,
+            "learned_score": 80.0,
+        }
+    ]
