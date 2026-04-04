@@ -18,6 +18,8 @@ export PYTHONPATH="$PROJECT_ROOT"
 CURRENT_PERIOD="1mo"
 CURRENT_TOP="5"
 CURRENT_MIN_VOLUME="1000000"
+AUTO_RUN_STATUS_LABEL="UNBEKANNT"
+AUTO_RUN_STATUS_DETAIL="Noch nicht geprüft"
 
 ACTIVE_CHILD_PID=""
 ACTIVE_PGID=""
@@ -47,6 +49,8 @@ header() {
   line
   printf "${WHITE}Zeitraum:${RESET} %s | ${WHITE}Top-N:${RESET} %s | ${WHITE}Min-Volumen:${RESET} %s\n" \
     "$CURRENT_PERIOD" "$CURRENT_TOP" "$CURRENT_MIN_VOLUME"
+  printf "${WHITE}GitHub Auto-Run:${RESET} %s | ${DIM}%s${RESET}\n" \
+    "$AUTO_RUN_STATUS_LABEL" "$AUTO_RUN_STATUS_DETAIL"
   printf "${WHITE}Hotkeys:${RESET} ${YELLOW}q${RESET}=Quit | ${YELLOW}p${RESET}=Pause/Resume | ${YELLOW}r${RESET}=Restart | ${YELLOW}s${RESET}=Status\n"
   line
   echo
@@ -61,6 +65,28 @@ green_msg() { printf "${GREEN}%s${RESET}\n" "$1"; }
 red_msg() { printf "${RED}%s${RESET}\n" "$1"; }
 yellow_msg() { printf "${YELLOW}%s${RESET}\n" "$1"; }
 blue_msg() { printf "${BLUE}%s${RESET}\n" "$1"; }
+
+refresh_auto_run_status() {
+  local output
+
+  if output="$("$PYTHON_BIN" github_actions_control.py status-line 2>/dev/null)"; then
+    AUTO_RUN_STATUS_LABEL="${output%%|*}"
+    AUTO_RUN_STATUS_DETAIL="${output#*|}"
+    return 0
+  fi
+
+  AUTO_RUN_STATUS_LABEL="UNBEKANNT"
+  AUTO_RUN_STATUS_DETAIL="GitHub-Status gerade nicht erreichbar"
+  return 1
+}
+
+auto_run_menu_label() {
+  case "$AUTO_RUN_STATUS_LABEL" in
+    EIN) printf "GitHub Auto-Run ausschalten" ;;
+    AUS) printf "GitHub Auto-Run einschalten" ;;
+    *) printf "GitHub Auto-Run umschalten" ;;
+  esac
+}
 
 get_pgid() {
   local pid="$1"
@@ -289,17 +315,35 @@ run_pdf_report() {
   run_with_controls "$PYTHON_BIN -c 'from report_pdf import run; run()'"
 }
 
+toggle_auto_run() {
+  header "GITHUB AUTO-RUN"
+
+  local output
+  if output="$("$PYTHON_BIN" github_actions_control.py toggle 2>&1)"; then
+    green_msg "$output"
+  else
+    red_msg "$output"
+  fi
+
+  refresh_auto_run_status
+  yellow_msg "Aktueller Status: $AUTO_RUN_STATUS_LABEL"
+  printf "${DIM}%s${RESET}\n" "$AUTO_RUN_STATUS_DETAIL"
+  pause_prompt
+}
+
 main_menu() {
   while true; do
+    refresh_auto_run_status
     header "TRADING TERMINAL"
 
     printf "${WHITE}1)${RESET} Standard\n"
     printf "${WHITE}2)${RESET} Pro Schnell\n"
     printf "${WHITE}3)${RESET} Live\n"
     printf "${WHITE}4)${RESET} Dashboard\n"
-    printf "${WHITE}5)${RESET} Tests\n"
-    printf "${WHITE}6)${RESET} PDF-Report\n"
-    printf "${WHITE}7)${RESET} Exit\n"
+    printf "${WHITE}5)${RESET} %s\n" "$(auto_run_menu_label)"
+    printf "${WHITE}6)${RESET} Tests\n"
+    printf "${WHITE}7)${RESET} PDF-Report\n"
+    printf "${WHITE}8)${RESET} Exit\n"
     echo
 
     read -r -p "Auswahl: " choice
@@ -309,9 +353,10 @@ main_menu() {
       2) run_pro_fast ;;
       3) run_live ;;
       4) run_dashboard ;;
-      5) run_tests ;;
-      6) run_pdf_report ;;
-      7) exit 0 ;;
+      5) toggle_auto_run ;;
+      6) run_tests ;;
+      7) run_pdf_report ;;
+      8) exit 0 ;;
       q|Q) exit 0 ;;
       *)
         red_msg "Ungültige Auswahl"

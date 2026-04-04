@@ -14,6 +14,7 @@ from config import (
     list_profile_names,
     set_active_profile_name,
 )
+from github_actions_control import get_auto_run_status, toggle_auto_run
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 PYTHON_BIN = PROJECT_ROOT / ".venv" / "bin" / "python"
@@ -92,6 +93,7 @@ MENU_ITEMS = [
     ("Pro Schnell", "run_pro_fast"),
     ("Live", "run_live"),
     ("Dashboard", "run_dashboard"),
+    ("Auto-Run umschalten", "toggle_auto_run"),
     ("Profil umschalten", "switch_profile"),
     ("Tests", "run_tests"),
     ("Exit", "exit_app"),
@@ -145,6 +147,24 @@ def _cmd_tests() -> list[str]:
     if pytest_bin.exists():
         return [str(pytest_bin), "-q"]
     return [_python_bin(), "-m", "pytest", "-q"]
+
+
+def _menu_items(auto_run_status: dict[str, object] | None = None) -> list[tuple[str, str]]:
+    status = auto_run_status or {"enabled": None, "label": "UNBEKANNT"}
+    enabled = status.get("enabled")
+    label = "Auto-Run umschalten"
+    if enabled is True:
+        label = "Auto-Run ausschalten"
+    elif enabled is False:
+        label = "Auto-Run einschalten"
+
+    items = []
+    for item_label, action in MENU_ITEMS:
+        if action == "toggle_auto_run":
+            items.append((label, action))
+        else:
+            items.append((item_label, action))
+    return items
 
 
 def _safe_addstr(stdscr, y: int, x: int, text: str, attr: int = 0) -> None:
@@ -298,6 +318,26 @@ def _stream_process(stdscr, title: str, cmd: list[str]) -> None:
                     return
 
 
+def _message_box(stdscr, title: str, lines: list[str]) -> None:
+    while True:
+        stdscr.erase()
+        h, w = stdscr.getmaxyx()
+        box_w = min(max(56, max((len(line) for line in lines), default=20) + 6), max(20, w - 4))
+        box_h = min(max(8, len(lines) + 5), max(6, h - 4))
+        y = max(0, (h - box_h) // 2)
+        x = max(0, (w - box_w) // 2)
+
+        _draw_box(stdscr, y, x, box_h, box_w, title)
+        for idx, line in enumerate(lines):
+            _safe_addstr(stdscr, y + 2 + idx, x + 2, line)
+        _safe_addstr(stdscr, y + box_h - 2, x + 2, "Enter oder q = zurück", curses.A_DIM)
+        stdscr.refresh()
+
+        key = stdscr.getch()
+        if key in (10, 13, curses.KEY_ENTER, ord("q"), ord("Q"), 27):
+            return
+
+
 def _profile_menu(stdscr) -> None:
     profiles = list_profile_names()
     current = get_active_profile_name()
@@ -333,10 +373,11 @@ def _profile_menu(stdscr) -> None:
             current = set_active_profile_name(profiles[idx])
 
 
-def _draw_main(stdscr, selected: int) -> None:
+def _draw_main(stdscr, selected: int, auto_run_status: dict[str, object]) -> None:
     stdscr.erase()
     h, w = stdscr.getmaxyx()
     profile = get_active_profile_name()
+    menu_items = _menu_items(auto_run_status)
 
     left_w = min(40, max(20, w // 2))
     right_w = max(20, w - left_w - 2)
@@ -355,7 +396,7 @@ def _draw_main(stdscr, selected: int) -> None:
     _safe_addstr(stdscr, 11, 2, "q = beenden")
 
     menu_y = 14
-    for i, (label, _) in enumerate(MENU_ITEMS):
+    for i, (label, _) in enumerate(menu_items):
         attr = curses.A_REVERSE if i == selected else 0
         _safe_addstr(stdscr, menu_y + i, 3, label, attr)
 
@@ -370,6 +411,9 @@ def _draw_main(stdscr, selected: int) -> None:
     _safe_addstr(stdscr, 9, rx, f"Max Trades/Woche   : {cfg.get('max_new_trades_per_week')}")
     _safe_addstr(stdscr, 10, rx, f"Min Edge           : {float(cfg.get('min_expected_edge_pct', 0.0)):.2%}")
     _safe_addstr(stdscr, 11, rx, f"Vol Target         : {float(cfg.get('vol_target', 0.0)):.4f}")
+    _safe_addstr(stdscr, 13, rx, "GitHub Auto-Run", curses.A_BOLD)
+    _safe_addstr(stdscr, 14, rx, f"Status             : {auto_run_status.get('label', 'UNBEKANNT')}")
+    _safe_addstr(stdscr, 15, rx, str(auto_run_status.get("detail", "-")), curses.A_DIM)
 
     _safe_addstr(stdscr, h - 2, 2, "Terminal Pro UI – q = Exit", curses.A_DIM)
     stdscr.refresh()
@@ -400,11 +444,14 @@ def main(stdscr) -> None:
     stdscr.timeout(-1)
 
     selected = 0
+    auto_run_status = get_auto_run_status()
 
     _show_start_screen(stdscr)
 
     while True:
-        _draw_main(stdscr, selected)
+        menu_items = _menu_items(auto_run_status)
+        selected = min(selected, len(menu_items) - 1)
+        _draw_main(stdscr, selected, auto_run_status)
         stdscr.nodelay(False)
         stdscr.timeout(-1)
         key = stdscr.getch()
@@ -412,11 +459,11 @@ def main(stdscr) -> None:
         if key in (ord("q"), ord("Q")):
             return
         elif key in (curses.KEY_UP, ord("k"), 65):
-            selected = (selected - 1) % len(MENU_ITEMS)
+            selected = (selected - 1) % len(menu_items)
         elif key in (curses.KEY_DOWN, ord("j"), 66):
-            selected = (selected + 1) % len(MENU_ITEMS)
+            selected = (selected + 1) % len(menu_items)
         elif key in (10, 13, curses.KEY_ENTER):
-            _, action = MENU_ITEMS[selected]
+            _, action = menu_items[selected]
 
             if action == "run_standard":
                 _stream_process(stdscr, "Standard", _cmd_standard())
@@ -426,6 +473,18 @@ def main(stdscr) -> None:
                 _stream_process(stdscr, "Live", _cmd_live())
             elif action == "run_dashboard":
                 _stream_process(stdscr, "Dashboard", _cmd_dashboard())
+            elif action == "toggle_auto_run":
+                result = toggle_auto_run()
+                auto_run_status = get_auto_run_status()
+                _message_box(
+                    stdscr,
+                    "GitHub Auto-Run",
+                    [
+                        result.get("message", "Kein Status verfügbar."),
+                        f"Aktueller Status: {auto_run_status.get('label', 'UNBEKANNT')}",
+                        str(auto_run_status.get("detail", "-")),
+                    ],
+                )
             elif action == "run_tests":
                 _stream_process(stdscr, "Tests", _cmd_tests())
             elif action == "switch_profile":
