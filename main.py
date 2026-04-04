@@ -33,7 +33,7 @@ from dashboard import build_dashboard
 from dashboard_live import run_live_terminal
 from mini_trading_system import run_mini_trading_system
 from realistic_backtest import run_realistic_backtest, print_realistic_backtest_summary
-from config import DAILY_REPORT_HTML, REPORTS_DIR, get_active_profile_name
+from config import DAILY_REPORT_HTML, REPORTS_DIR, get_active_profile_name, get_trading_config, list_profile_names
 
 
 def normalize_period_input(period):
@@ -109,6 +109,9 @@ def _build_cli_parser():
             "Beispiele:\n"
             "  python main.py\n"
             "  python main.py -p 6mo -t 10\n"
+            "  python main.py --profile offensiv\n"
+            "  python main.py --profile mittel --capital 5000\n"
+            "  python main.py --compare-profiles\n"
             "  python main.py --pro\n"
             "  python main.py --pro --fast\n"
             "  python main.py --live\n"
@@ -129,7 +132,7 @@ def _build_cli_parser():
         "-t",
         "--top",
         type=int,
-        default=5,
+        default=None,
         help="Anzahl der Top-Kandidaten für Auswahl und Auswertung",
     )
     parser.add_argument(
@@ -138,6 +141,23 @@ def _build_cli_parser():
         type=int,
         default=1000000,
         help="Minimales durchschnittliches Handelsvolumen",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=list_profile_names(),
+        default=None,
+        help="Profil nur fuer diesen Lauf ueberschreiben, ohne das gespeicherte aktive Profil zu aendern",
+    )
+    parser.add_argument(
+        "--compare-profiles",
+        action="store_true",
+        help="Vergleicht alle Profile auf Basis des aktuellen Analyse-Snapshots",
+    )
+    parser.add_argument(
+        "--capital",
+        type=float,
+        default=None,
+        help="Kapital fuer diesen Lauf ueberschreiben; ohne Angabe wird das Profil-Startkapital verwendet",
     )
 
     parser.add_argument(
@@ -247,6 +267,92 @@ def _symbols_for_realistic_backtest(result, top_n: int) -> list[str]:
     return symbols[:top_n]
 
 
+def _build_profile_comparison_rows(
+    analysis_result: dict,
+    total_capital: float | None = None,
+    top_n: int | None = None,
+    current_positions: dict | None = None,
+    peak_equity: float | None = None,
+    profile_names: list[str] | None = None,
+) -> list[dict]:
+    current_positions = current_positions or {}
+    rows = []
+
+    for profile_name in profile_names or list_profile_names():
+        cfg = get_trading_config(profile_name)
+        profile_capital = float(total_capital if total_capital is not None else cfg["initial_capital"])
+        profile_top_n = int(top_n if top_n is not None else cfg["max_positions"])
+        plan = build_trading_plan(
+            total_capital=profile_capital,
+            top_n=profile_top_n,
+            profile_name=profile_name,
+        )
+        decisions = simulate_trading_decisions(
+            analysis_result=analysis_result,
+            total_capital=profile_capital,
+            current_positions=current_positions,
+            peak_equity=peak_equity,
+            top_n=profile_top_n,
+            profile_name=profile_name,
+        )
+        orders = decisions.get("orders", [])
+        buy_orders = sum(1 for order in orders if order.get("action") == "BUY")
+        sell_orders = sum(1 for order in orders if order.get("action") == "SELL")
+        rows.append(
+            {
+                "profile_name": profile_name,
+                "capital": profile_capital,
+                "max_positions": int(cfg.get("max_positions", 0)),
+                "max_position_pct": float(cfg.get("max_position_pct", 0.0)),
+                "min_trade_eur": float(cfg.get("min_trade_eur", 0.0)),
+                "stop_loss_pct": float(cfg.get("stop_loss_pct", 0.0)),
+                "max_drawdown_pct": float(cfg.get("max_drawdown_pct", 0.0)),
+                "plan_size": len(plan),
+                "buy_orders": buy_orders,
+                "sell_orders": sell_orders,
+                "trading_blocked": bool(decisions.get("drawdown_state", {}).get("trading_blocked", False)),
+                "top_symbols": [item.get("symbol", "-") for item in plan[:3]],
+            }
+        )
+
+    return rows
+
+
+def print_profile_comparison(rows: list[dict], selected_profile: str) -> None:
+    print("\n========================================")
+    print(" PROFILVERGLEICH")
+    print("========================================")
+
+    if not rows:
+        print("Keine Vergleichsdaten verfuegbar.")
+        print("========================================\n")
+        return
+
+    print(f"{'PROFIL':<14}{'KAPITAL':>12}{'TOP':>6}{'STOP':>8}{'DD':>8}{'BUY':>6}{'SELL':>6}{'BLOCK':>8}  TOP-SYMBOLE")
+    print("-" * 100)
+
+    for row in rows:
+        label = row["profile_name"]
+        if row["profile_name"] == selected_profile:
+            label = f"{label}*"
+
+        top_symbols = ", ".join(row.get("top_symbols", [])) or "-"
+        print(
+            f"{label:<14}"
+            f"{float(row.get('capital', 0.0)):>12.0f}"
+            f"{int(row.get('plan_size', 0)):>6}"
+            f"{float(row.get('stop_loss_pct', 0.0)) * 100:>7.1f}%"
+            f"{float(row.get('max_drawdown_pct', 0.0)) * 100:>7.1f}%"
+            f"{int(row.get('buy_orders', 0)):>6}"
+            f"{int(row.get('sell_orders', 0)):>6}"
+            f"{('JA' if row.get('trading_blocked') else 'NEIN'):>8}  "
+            f"{top_symbols}"
+        )
+
+    print("\n* markiert das fuer diesen Lauf ausgewaehlte Profil")
+    print("========================================\n")
+
+
 def run():
     args = _parse_cli()
 
@@ -254,16 +360,23 @@ def run():
         print("Fehlende Abhängigkeiten. Der Start wurde abgebrochen.")
         return
 
+    selected_profile = getattr(args, "profile", None) or get_active_profile_name()
+    compare_profiles = bool(getattr(args, "compare_profiles", False))
+    active_cfg = get_trading_config(selected_profile)
+    run_capital = float(args.capital if args.capital is not None else active_cfg["initial_capital"])
+    active_top_n = int(args.top if args.top is not None else active_cfg["max_positions"])
+
     if args.dashboard:
         run_live_terminal()
         return
 
     if args.mini_system:
         run_mini_trading_system(
-            total_capital=10_000.0,
-            top_n=args.top,
+            total_capital=run_capital,
+            top_n=active_top_n,
             period=normalize_period_input(args.period) or "6mo",
             interval="1d",
+            profile_name=selected_profile,
         )
         return
 
@@ -275,27 +388,31 @@ def run():
     set_beginner_mode(args.beginner)
 
     start = time.time()
-    active_profile = get_active_profile_name()
+    active_profile = selected_profile
 
     print("\n========================================")
     print(" AKTIVES PROFIL")
     print("========================================")
     print(active_profile)
+    if getattr(args, "profile", None):
+        print("(Override nur fuer diesen Lauf)")
+    print(f"Kapital: {run_capital:.2f} EUR | Top-N: {active_top_n}")
     print("========================================\n")
 
     period = normalize_period_input(args.period) or "1mo"
 
     result = run_analysis(
         period=period,
-        top_n=args.top,
+        top_n=active_top_n,
         min_volume=args.min_volume,
         long_mode=args.long or args.pro_mode,
         show_progress=args.pro_mode,
+        profile_name=active_profile,
     )
 
     plan = build_trading_plan(
-        total_capital=1000,
-        top_n=args.top,
+        total_capital=run_capital,
+        top_n=active_top_n,
         profile_name=active_profile,
     )
     print_trading_plan(plan)
@@ -304,16 +421,29 @@ def run():
 
     decisions = simulate_trading_decisions(
         analysis_result=result,
-        total_capital=1000.0,
+        total_capital=run_capital,
         current_positions=current_positions,
         peak_equity=None,
-        top_n=args.top,
+        top_n=active_top_n,
         profile_name=active_profile,
     )
     print_trading_decisions(decisions)
 
+    if compare_profiles:
+        comparison_rows = _build_profile_comparison_rows(
+            analysis_result=result,
+            total_capital=args.capital,
+            top_n=args.top,
+            current_positions=current_positions,
+            peak_equity=None,
+        )
+        print_profile_comparison(comparison_rows, active_profile)
+        result = dict(result)
+        result["profile_comparison"] = comparison_rows
+
     update_latest_json_context(
         output_dir=REPORTS_DIR,
+        profile_name=active_profile,
         future_candidates=result.get("future_candidates", []),
         trading_plan=plan,
         decisions=decisions,
@@ -322,23 +452,25 @@ def run():
         analysis_result=result,
         trading_plan=plan,
         decisions=decisions,
+        profile_name=active_profile,
     )
 
     if args.fast:
         print("\n[FAST MODE] Walk-Forward und realistischer Backtest werden uebersprungen.")
     else:
         run_walk_forward(
-            top_n=args.top,
+            top_n=active_top_n,
             min_volume=args.min_volume,
             profile_name=active_profile,
         )
 
     if not args.fast and not args.skip_realistic_backtest:
-        symbols = _symbols_for_realistic_backtest(result, top_n=args.top)
+        symbols = _symbols_for_realistic_backtest(result, top_n=active_top_n)
         realistic = run_realistic_backtest(
             symbols=symbols,
             period=period,
             interval="1d",
+            profile_name=active_profile,
         )
         print_realistic_backtest_summary(realistic)
 

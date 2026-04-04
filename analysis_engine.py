@@ -393,7 +393,7 @@ def get_signal_from_df(df, rate_to_eur_latest):
     return signal, price_eur, price_native
 
 
-def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest):
+def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest, profile_name: str | None = None):
     df = add_signals(df).dropna()
 
     if df.empty:
@@ -410,8 +410,8 @@ def backtest_from_df(df, native_currency, fx_df, rate_to_eur_latest):
 
         if broker.position > 0 and broker.open_trade is not None:
             entry = broker.open_trade["buy_price_native"]
-            sl = stop_loss_price(entry)
-            tp = take_profit_price(entry)
+            sl = stop_loss_price(entry, profile_name=profile_name)
+            tp = take_profit_price(entry, profile_name=profile_name)
 
             if price_native <= sl:
                 broker.sell(price_native, ts, rate_to_eur, reason="STOP_LOSS")
@@ -586,6 +586,7 @@ def run_analysis(
     min_volume=DEFAULT_MIN_VOLUME,
     long_mode=False,
     show_progress=True,
+    profile_name: str | None = None,
 ):
     interval = choose_interval(period)
 
@@ -760,6 +761,7 @@ def run_analysis(
                 native_currency,
                 fx_df,
                 rate_to_eur_latest,
+                profile_name=profile_name,
             )
             if not result:
                 continue
@@ -840,6 +842,7 @@ def run_analysis(
             interval=interval,
             results=[],
             portfolio={},
+            profile_name=profile_name,
             future_candidates=future_candidates,
         )
         print_learning_summary()
@@ -847,11 +850,12 @@ def run_analysis(
         dashboard_result = {
             "period": period,
             "interval": interval,
+            "profile_name": profile_name,
             "results": [],
             "portfolio": {},
             "future_candidates": future_candidates,
         }
-        build_dashboard(analysis_result=dashboard_result)
+        build_dashboard(analysis_result=dashboard_result, profile_name=profile_name)
         return dashboard_result
 
     if long_mode:
@@ -927,6 +931,7 @@ def run_analysis(
         interval=interval,
         results=results,
         portfolio=portfolio,
+        profile_name=profile_name,
         future_candidates=future_candidates,
     )
 
@@ -935,10 +940,11 @@ def run_analysis(
     dashboard_result = {
         "period": period,
         "interval": interval,
+        "profile_name": profile_name,
         "results": results,
         "portfolio": portfolio,
         "future_candidates": future_candidates,
     }
-    build_dashboard(analysis_result=dashboard_result)
+    build_dashboard(analysis_result=dashboard_result, profile_name=profile_name)
 
     return dashboard_result

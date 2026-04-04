@@ -74,6 +74,7 @@ def _coerce_analysis_snapshot(
     analysis_result: dict[str, Any] | None,
     trading_plan: list[dict[str, Any]] | None = None,
     decisions: dict[str, Any] | None = None,
+    profile_name: str | None = None,
 ) -> dict[str, Any]:
     if analysis_result is None:
         snapshot = _load_latest_run_snapshot()
@@ -83,6 +84,7 @@ def _coerce_analysis_snapshot(
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
             "period": analysis_result.get("period"),
             "interval": analysis_result.get("interval"),
+            "profile_name": profile_name or analysis_result.get("profile_name"),
             "results": analysis_result.get("results", []),
             "portfolio": analysis_result.get("portfolio", {}),
             "future_candidates": analysis_result.get("future_candidates", []),
@@ -203,12 +205,19 @@ def _build_analysis_section(
     analysis_result: dict[str, Any] | None = None,
     trading_plan: list[dict[str, Any]] | None = None,
     decisions: dict[str, Any] | None = None,
+    profile_name: str | None = None,
 ) -> dict[str, Any]:
-    snapshot = _coerce_analysis_snapshot(analysis_result, trading_plan=trading_plan, decisions=decisions)
+    snapshot = _coerce_analysis_snapshot(
+        analysis_result,
+        trading_plan=trading_plan,
+        decisions=decisions,
+        profile_name=profile_name,
+    )
 
     generated_at = _safe_text(snapshot.get("generated_at_utc"), "")
     period = _safe_text(snapshot.get("period"))
     interval = _safe_text(snapshot.get("interval"))
+    analysis_profile_name = _safe_text(snapshot.get("profile_name"), "")
 
     current_results = _normalize_current_results(snapshot)
     future_candidates = _normalize_future_candidates(snapshot)
@@ -221,6 +230,7 @@ def _build_analysis_section(
         "generated_at": generated_at,
         "period": period,
         "interval": interval,
+        "profile_name": analysis_profile_name,
         "current_results": current_results,
         "future_candidates": future_candidates,
         "trading_plan": trading_plan_rows,
@@ -231,8 +241,8 @@ def _build_analysis_section(
     }
 
 
-def build_documentation_section() -> dict[str, Any]:
-    profile_name = get_active_profile_name()
+def build_documentation_section(profile_name: str | None = None) -> dict[str, Any]:
+    profile_name = profile_name or get_active_profile_name()
     cfg = get_trading_config(profile_name)
 
     return {
@@ -266,6 +276,7 @@ def build_dashboard_data(
     analysis_result: dict[str, Any] | None = None,
     trading_plan: list[dict[str, Any]] | None = None,
     decisions: dict[str, Any] | None = None,
+    profile_name: str | None = None,
 ) -> dict[str, Any]:
     perf = analyze_performance()
     state = load_portfolio_state(initial_cash=initial_cash)
@@ -274,9 +285,10 @@ def build_dashboard_data(
         analysis_result=analysis_result,
         trading_plan=trading_plan,
         decisions=decisions,
+        profile_name=profile_name,
     )
 
-    active_profile = get_active_profile_name()
+    active_profile = profile_name or analysis.get("profile_name") or get_active_profile_name()
     profile_cfg = get_trading_config(active_profile)
     risk = risk_summary(active_profile)
 
@@ -327,7 +339,7 @@ def build_dashboard_data(
             "open_positions": state.get("positions", {}),
         },
         "risk": risk,
-        "documentation": build_documentation_section(),
+        "documentation": build_documentation_section(active_profile),
     }
 
 
@@ -742,6 +754,7 @@ def build_dashboard(
     analysis_result: dict[str, Any] | None = None,
     trading_plan: list[dict[str, Any]] | None = None,
     decisions: dict[str, Any] | None = None,
+    profile_name: str | None = None,
 ) -> dict[str, Any]:
     """
     Baut Dashboard-Daten und schreibt JSON + HTML.
@@ -751,6 +764,7 @@ def build_dashboard(
         analysis_result=analysis_result,
         trading_plan=trading_plan,
         decisions=decisions,
+        profile_name=profile_name,
     )
     _write_dashboard_json(data)
     _write_dashboard_html(data)

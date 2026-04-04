@@ -101,6 +101,7 @@ def write_latest_json(
     interval,
     results,
     portfolio,
+    profile_name=None,
     future_candidates=None,
     trading_plan=None,
     decisions=None,
@@ -111,6 +112,7 @@ def write_latest_json(
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "period": period,
         "interval": interval,
+        "profile_name": profile_name,
         "results": _json_safe_results(results),
         "portfolio": portfolio,
         "future_candidates": _json_safe_candidates(future_candidates),
@@ -126,6 +128,7 @@ def write_latest_json(
 def update_latest_json_context(
     output_dir,
     *,
+    profile_name=None,
     future_candidates=None,
     trading_plan=None,
     decisions=None,
@@ -139,6 +142,8 @@ def update_latest_json_context(
     else:
         payload = {}
 
+    if profile_name is not None:
+        payload["profile_name"] = profile_name
     if future_candidates is not None:
         payload["future_candidates"] = _json_safe_candidates(future_candidates)
     if trading_plan is not None:
@@ -377,6 +382,7 @@ def save_run_outputs(
     interval,
     results,
     portfolio,
+    profile_name=None,
     future_candidates=None,
     trading_plan=None,
     decisions=None,
@@ -387,6 +393,7 @@ def save_run_outputs(
         interval,
         results,
         portfolio,
+        profile_name=profile_name,
         future_candidates=future_candidates,
         trading_plan=trading_plan,
         decisions=decisions,

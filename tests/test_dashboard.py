@@ -169,3 +169,16 @@ def test_build_dashboard_writes_html_with_current_analysis(monkeypatch, tmp_path
     assert "Aktuelle Analyse-Ergebnisse" in html
     assert "NVIDIA Corporation" in html
     assert "US67066G1040" in html
+
+
+def test_build_dashboard_data_honors_explicit_profile_override(monkeypatch):
+    _patch_dashboard_dependencies(monkeypatch)
+
+    monkeypatch.setattr(dashboard, "get_trading_config", lambda profile_name: {"max_positions": 6})
+
+    data = dashboard.build_dashboard_data(
+        analysis_result=_sample_analysis_result(),
+        profile_name="offensiv",
+    )
+
+    assert data["profile"]["name"] == "offensiv"

@@ -7,6 +7,7 @@ the configured reports directory and is not the walk-forward implementation
 used by ``main.py``.
 """
 
+import argparse
 import csv
 import json
 from datetime import datetime
@@ -15,7 +16,15 @@ from pathlib import Path
 from analysis_engine import run_analysis
 from cache_utils import get_cached_metadata
 from cli import choose_interval
-from config import BENCHMARK_SYMBOL, DEFAULT_MIN_VOLUME, DEFAULT_TOP_N, REPORTS_DIR as DEFAULT_REPORTS_DIR
+from config import (
+    BENCHMARK_SYMBOL,
+    DEFAULT_MIN_VOLUME,
+    DEFAULT_TOP_N,
+    REPORTS_DIR as DEFAULT_REPORTS_DIR,
+    get_active_profile_name,
+    get_trading_config,
+    list_profile_names,
+)
 from data_loader import fallback_rate_to_eur, latest_rate_to_eur, load_ticker_metadata
 from market_data_cache import load_benchmark_cached
 
@@ -395,16 +404,20 @@ def _write_pdf(summary, pdf_path):
 
 def run_walk_forward(
     periods=None,
-    top_n=DEFAULT_TOP_N,
+    top_n=None,
     min_volume=DEFAULT_MIN_VOLUME,
     long_mode=False,
+    profile_name: str | None = None,
 ):
     _ensure_dirs()
+    resolved_profile = profile_name or get_active_profile_name()
+    cfg = get_trading_config(resolved_profile)
 
     if periods is None:
         periods = list(DEFAULT_PERIODS)
 
     periods = sorted(periods, key=_period_sort_key)
+    effective_top_n = int(cfg["max_positions"]) if top_n is None else min(int(top_n), int(cfg["max_positions"]))
 
     windows = []
 
@@ -412,9 +425,10 @@ def run_walk_forward(
         print(f"\n>>> Starte Walk-Forward-Fenster {period}")
         result = run_analysis(
             period=period,
-            top_n=top_n,
+            top_n=effective_top_n,
             min_volume=min_volume,
             long_mode=long_mode,
+            profile_name=resolved_profile,
         )
         windows.append(_summarize_run(period, result))
 
@@ -435,6 +449,8 @@ def run_walk_forward(
 
     summary = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "profile_name": resolved_profile,
+        "top_n": effective_top_n,
         "window_count": len(windows),
         "combined_pnl_eur": round(combined_pnl, 2),
         "combined_trades": combined_trades,
@@ -487,5 +503,34 @@ def run_walk_forward(
     return summary
 
 
+def _build_cli_parser():
+    active_profile = get_active_profile_name()
+    parser = argparse.ArgumentParser(
+        prog="python walk_forward.py",
+        description=(
+            "Legacy Walk-Forward-Reportpfad.\n"
+            f"Aktives Regel-/Trading-Profil: {active_profile}"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument("--profile", choices=list_profile_names(), default=None)
+    parser.add_argument("--top", type=int, default=None)
+    parser.add_argument("--min-volume", type=int, default=DEFAULT_MIN_VOLUME)
+    parser.add_argument("--long", action="store_true")
+    parser.add_argument("--periods", nargs="*", default=None)
+    return parser
+
+
+def _parse_cli():
+    return _build_cli_parser().parse_args()
+
+
 if __name__ == "__main__":
-    run_walk_forward()
+    args = _parse_cli()
+    run_walk_forward(
+        periods=args.periods,
+        top_n=args.top,
+        min_volume=args.min_volume,
+        long_mode=args.long,
+        profile_name=args.profile,
+    )

@@ -142,6 +142,7 @@ def run_walk_forward(
             min_volume=min_volume,
             long_mode=True,
             show_progress=False,
+            profile_name=resolved_profile,
         )
 
         prices = _extract_prices(result)

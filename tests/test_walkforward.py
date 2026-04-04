@@ -60,13 +60,14 @@ def test_run_walk_forward_aggregates_pnl_hit_rate_and_trades(monkeypatch):
         lambda profile_name=None: {"initial_capital": 1000.0, "max_positions": 3},
     )
 
-    def fake_run_analysis(period, top_n, min_volume, long_mode, show_progress):
+    def fake_run_analysis(period, top_n, min_volume, long_mode, show_progress, profile_name=None):
         prices = {
             "1mo": 10.0,
             "3mo": 12.0,
         }
         assert top_n == 3
         assert min_volume == walkforward.DEFAULT_MIN_VOLUME
+        assert profile_name == "test-profile"
         return {"results": [{"symbol": "AAA", "price": prices[period]}]}
 
     def fake_simulate_trading_decisions(

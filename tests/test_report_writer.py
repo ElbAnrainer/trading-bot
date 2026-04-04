@@ -81,6 +81,7 @@ def test_update_latest_json_context_adds_plan_and_decisions(tmp_path):
 
     update_latest_json_context(
         tmp_path,
+        profile_name="offensiv",
         trading_plan=[
             {
                 "symbol": "NVDA",
@@ -106,5 +107,6 @@ def test_update_latest_json_context_adds_plan_and_decisions(tmp_path):
     )
 
     data = json.loads((tmp_path / "latest_run.json").read_text(encoding="utf-8"))
+    assert data["profile_name"] == "offensiv"
     assert data["trading_plan"][0]["symbol"] == "NVDA"
     assert data["decisions"]["orders"][0]["action"] == "BUY"
