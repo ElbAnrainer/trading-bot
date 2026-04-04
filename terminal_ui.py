@@ -93,6 +93,7 @@ MENU_ITEMS = [
     ("Pro Schnell", "run_pro_fast"),
     ("Live", "run_live"),
     ("Dashboard", "run_dashboard"),
+    ("Berichte aktualisieren", "refresh_reports"),
     ("Auto-Run umschalten", "toggle_auto_run"),
     ("Profil umschalten", "switch_profile"),
     ("Tests", "run_tests"),
@@ -147,6 +148,10 @@ def _cmd_live() -> list[str]:
 
 def _cmd_dashboard() -> list[str]:
     return [_python_bin(), "main.py", "--dashboard"]
+
+
+def _cmd_refresh_reports() -> list[str]:
+    return [_python_bin(), "refresh_reports.py"]
 
 
 def _cmd_tests() -> list[str]:
@@ -480,6 +485,8 @@ def main(stdscr) -> None:
                 _stream_process(stdscr, "Live", _cmd_live())
             elif action == "run_dashboard":
                 _stream_process(stdscr, "Dashboard", _cmd_dashboard())
+            elif action == "refresh_reports":
+                _stream_process(stdscr, "Berichte aktualisieren", _cmd_refresh_reports())
             elif action == "toggle_auto_run":
                 result = toggle_auto_run()
                 auto_run_status = get_auto_run_status()

@@ -307,6 +307,10 @@ run_dashboard() {
   run_with_controls "$PYTHON_BIN main.py --dashboard"
 }
 
+run_refresh_reports() {
+  run_with_controls "$PYTHON_BIN refresh_reports.py"
+}
+
 run_tests() {
   run_with_controls "$PYTHON_BIN -m pytest -q"
 }
@@ -340,10 +344,11 @@ main_menu() {
     printf "${WHITE}2)${RESET} Pro Schnell\n"
     printf "${WHITE}3)${RESET} Live\n"
     printf "${WHITE}4)${RESET} Dashboard\n"
-    printf "${WHITE}5)${RESET} %s\n" "$(auto_run_menu_label)"
-    printf "${WHITE}6)${RESET} Tests\n"
-    printf "${WHITE}7)${RESET} PDF-Report\n"
-    printf "${WHITE}8)${RESET} Exit\n"
+    printf "${WHITE}5)${RESET} Berichte aktualisieren\n"
+    printf "${WHITE}6)${RESET} %s\n" "$(auto_run_menu_label)"
+    printf "${WHITE}7)${RESET} Tests\n"
+    printf "${WHITE}8)${RESET} PDF-Report\n"
+    printf "${WHITE}9)${RESET} Exit\n"
     echo
 
     read -r -p "Auswahl: " choice
@@ -353,10 +358,11 @@ main_menu() {
       2) run_pro_fast ;;
       3) run_live ;;
       4) run_dashboard ;;
-      5) toggle_auto_run ;;
-      6) run_tests ;;
-      7) run_pdf_report ;;
-      8) exit 0 ;;
+      5) run_refresh_reports ;;
+      6) toggle_auto_run ;;
+      7) run_tests ;;
+      8) run_pdf_report ;;
+      9) exit 0 ;;
       q|Q) exit 0 ;;
       *)
         red_msg "Ungültige Auswahl"

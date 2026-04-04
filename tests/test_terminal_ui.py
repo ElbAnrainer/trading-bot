@@ -27,6 +27,19 @@ def test_menu_items_expose_pro_fast_entry():
     assert ("Pro Schnell", "run_pro_fast") in terminal_ui.MENU_ITEMS
 
 
+def test_menu_items_expose_refresh_reports_entry():
+    assert ("Berichte aktualisieren", "refresh_reports") in terminal_ui.MENU_ITEMS
+
+
+def test_cmd_refresh_reports_uses_helper_script(monkeypatch):
+    monkeypatch.setattr(terminal_ui, "_python_bin", lambda: ".venv/bin/python")
+
+    assert terminal_ui._cmd_refresh_reports() == [
+        ".venv/bin/python",
+        "refresh_reports.py",
+    ]
+
+
 def test_menu_items_show_disable_label_when_auto_run_is_enabled():
     items = terminal_ui._menu_items({"enabled": True, "label": "EIN"})
 
