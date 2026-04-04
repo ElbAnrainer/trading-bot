@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime
 from statistics import mean, pstdev
 from typing import Any
+from xml.sax.saxutils import escape
 
 import matplotlib.pyplot as plt
 from reportlab.lib import colors
@@ -360,6 +361,64 @@ def _build_profile_section(content: list[Any], section_style: ParagraphStyle, bo
     content.append(PageBreak())
 
 
+def _build_top_symbols_table(top_symbols: list[dict[str, Any]], body_style: ParagraphStyle) -> Table:
+    cell_style = ParagraphStyle(
+        "PdfTopCell",
+        parent=body_style,
+        fontName="Helvetica",
+        fontSize=9,
+        leading=11,
+        wordWrap="CJK",
+    )
+    numeric_style = ParagraphStyle(
+        "PdfTopCellNumeric",
+        parent=cell_style,
+        alignment=2,
+    )
+
+    def cell(text: Any, style: ParagraphStyle = cell_style) -> Paragraph:
+        return Paragraph(escape(str(text if text is not None else "-")), style)
+
+    table_data: list[list[Any]] = [["Symbol", "ISIN", "WKN", "Firma", "Trades", "P/L", "Ø Score"]]
+    for item in top_symbols:
+        table_data.append(
+            [
+                cell(item.get("symbol", "-")),
+                cell(item.get("isin", "-")),
+                cell(item.get("wkn", "-")),
+                cell(item.get("company", item.get("symbol", "-"))),
+                cell(str(item.get("trades", 0)), numeric_style),
+                cell(f"{float(item.get('pnl', 0.0)):.2f} EUR", numeric_style),
+                cell(f"{float(item.get('avg_score', 0.0)):.2f}", numeric_style),
+            ]
+        )
+
+    top_tbl = Table(
+        table_data,
+        colWidths=[1.8 * cm, 3.0 * cm, 1.8 * cm, 4.0 * cm, 1.6 * cm, 2.7 * cm, 1.6 * cm],
+        repeatRows=1,
+    )
+    top_tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("LEADING", (0, 0), (-1, -1), 11),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("ALIGN", (4, 1), (6, -1), "RIGHT"),
+            ]
+        )
+    )
+    return top_tbl
+
+
 def _build_signal_section(
     content: list[Any],
     metrics: dict[str, Any],
@@ -399,26 +458,7 @@ def _build_signal_section(
 
     content.append(Paragraph("Top-Aktien nach Journal P/L", section_style))
     if top_symbols:
-        top_table = [["Symbol", "ISIN", "WKN", "Firma", "Trades", "P/L", "Ø Score"]]
-        for item in top_symbols:
-            top_table.append([
-                item["symbol"],
-                item.get("isin", "-"),
-                item.get("wkn", "-"),
-                item["company"],
-                str(item["trades"]),
-                f"{item['pnl']:.2f} EUR",
-                f"{item['avg_score']:.2f}",
-            ])
-
-        top_tbl = Table(top_table, colWidths=[1.8 * cm, 3.1 * cm, 2.0 * cm, 4.4 * cm, 1.6 * cm, 2.2 * cm, 1.8 * cm])
-        top_tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ]))
-        content.append(top_tbl)
+        content.append(_build_top_symbols_table(top_symbols, body_style))
     else:
         content.append(Paragraph("Keine Journal-Daten vorhanden.", body_style))
 
