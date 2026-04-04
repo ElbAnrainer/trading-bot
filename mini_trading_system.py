@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-import yfinance as yf
-
 from advanced_risk import (
     adaptive_stop_loss_pct,
     adaptive_trailing_stop_pct,
@@ -13,6 +11,7 @@ from advanced_risk import (
 from candle_backtest import evaluate_open_position, latest_signal
 from config import get_active_profile_name, get_trading_config
 from performance import analyze_performance
+from market_data_cache import load_data_cached
 from portfolio_state import (
     append_history_event,
     cash_balance,
@@ -34,7 +33,7 @@ DEFAULT_INTERVAL = "1d"
 
 
 def _fetch_symbol_data(symbol: str, period: str = DEFAULT_PERIOD, interval: str = DEFAULT_INTERVAL):
-    df = yf.download(symbol, period=period, interval=interval, auto_adjust=False, progress=False)
+    df = load_data_cached(symbol, period=period, interval=interval, ttl_seconds=900)
     if df is None or df.empty:
         return None
 

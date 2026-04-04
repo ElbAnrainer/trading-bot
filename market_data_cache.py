@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import re
 import time
@@ -6,11 +5,11 @@ import time
 import pandas as pd
 
 from config import MARKET_DATA_CACHE_DIR as DEFAULT_MARKET_DATA_CACHE_DIR
-from data_loader import load_data, load_fx_to_eur_data
+from data_loader import load_data, load_data_batch, load_fx_to_eur_data
 
 
 CACHE_DIR = Path(DEFAULT_MARKET_DATA_CACHE_DIR)
-DEFAULT_MAX_WORKERS = 8
+DEFAULT_MAX_WORKERS = 4
 
 
 def _ensure_cache_dir():
@@ -61,45 +60,60 @@ def _normalize_df(df):
         return None
 
 
+def _load_cached_pickle(path):
+    if not path.exists():
+        return None
+    return _load_pickle(path)
+
+
 def load_data_cached(symbol, period, interval, ttl_seconds=900):
     path = _cache_path("symbol", [symbol, period, interval])
+    stale = _load_cached_pickle(path)
 
     if _is_fresh(path, ttl_seconds):
-        cached = _load_pickle(path)
-        if cached is not None:
-            return cached
+        if stale is not None:
+            return stale
 
     df = _normalize_df(load_data(symbol, period, interval))
     if df is not None and not df.empty:
         _save_pickle(path, df)
+        return df
+    if stale is not None:
+        return stale
     return df
 
 
 def load_benchmark_cached(symbol, period, interval, ttl_seconds=900):
     path = _cache_path("benchmark", [symbol, period, interval])
+    stale = _load_cached_pickle(path)
 
     if _is_fresh(path, ttl_seconds):
-        cached = _load_pickle(path)
-        if cached is not None:
-            return cached
+        if stale is not None:
+            return stale
 
     df = _normalize_df(load_data(symbol, period, interval))
     if df is not None and not df.empty:
         _save_pickle(path, df)
+        return df
+    if stale is not None:
+        return stale
     return df
 
 
 def load_fx_to_eur_data_cached(currency, period, interval, ttl_seconds=3600):
     path = _cache_path("fx", [currency, period, interval])
+    stale = _load_cached_pickle(path)
 
     if _is_fresh(path, ttl_seconds):
-        cached = _load_pickle(path)
-        if cached is not None:
-            return cached
+        if stale is not None:
+            return stale
 
     df = _normalize_df(load_fx_to_eur_data(currency, period, interval))
     if df is not None and not df.empty:
         _save_pickle(path, df)
+        return df
+    if stale is not None:
+        return stale
     return df
 
 
@@ -113,14 +127,21 @@ def load_data_batch_cached(
     symbols = [str(s).strip().upper() for s in symbols if str(s).strip()]
     results = {}
     missing = []
+    stale_by_symbol = {}
+
+    # Kept for API compatibility; batched downloads reduce Yahoo burst traffic
+    # more reliably than multiple parallel single-symbol calls.
+    _ = max_workers
 
     for symbol in symbols:
         path = _cache_path("symbol", [symbol, period, interval])
+        stale = _load_cached_pickle(path)
+        if stale is not None:
+            stale_by_symbol[symbol] = stale
 
         if _is_fresh(path, ttl_seconds):
-            cached = _load_pickle(path)
-            if cached is not None:
-                results[symbol] = cached
+            if stale is not None:
+                results[symbol] = stale
                 continue
 
         missing.append(symbol)
@@ -128,25 +149,21 @@ def load_data_batch_cached(
     if not missing:
         return results
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_map = {
-            executor.submit(load_data, symbol, period, interval): symbol
-            for symbol in missing
-        }
+    fetched = load_data_batch(missing, period, interval)
+    for symbol, df in fetched.items():
+        normalized = _normalize_df(df)
+        if normalized is None:
+            continue
+        results[symbol] = normalized
+        if not normalized.empty:
+            path = _cache_path("symbol", [symbol, period, interval])
+            _save_pickle(path, normalized)
 
-        for future in as_completed(future_map):
-            symbol = future_map[future]
-            try:
-                df = _normalize_df(future.result())
-            except Exception:
-                df = None
-
-            if df is None:
-                continue
-
-            results[symbol] = df
-            if not df.empty:
-                path = _cache_path("symbol", [symbol, period, interval])
-                _save_pickle(path, df)
+    for symbol in missing:
+        if symbol in results:
+            continue
+        stale = stale_by_symbol.get(symbol)
+        if stale is not None:
+            results[symbol] = stale
 
     return results

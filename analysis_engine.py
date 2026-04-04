@@ -1,6 +1,7 @@
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 
 from config import (
     INITIAL_CASH_EUR,
@@ -68,14 +69,31 @@ SCREENING_TTL_SECONDS = 900
 BACKTEST_TTL_SECONDS = 900
 BENCHMARK_TTL_SECONDS = 900
 FX_TTL_SECONDS = 3600
+IDENTIFIER_REFRESH_COOLDOWN_SECONDS = 24 * 60 * 60
 
 _LIVE_INITIALIZED = False
 
 
 def _metadata_needs_identifier_refresh(meta):
-    return (str(meta.get("isin", "")).strip() in ("", "-")) or (
+    missing_identifier = (str(meta.get("isin", "")).strip() in ("", "-")) or (
         str(meta.get("wkn", "")).strip() in ("", "-")
     )
+    if not missing_identifier:
+        return False
+
+    fetched_at = str(meta.get("fetched_at", "")).strip()
+    if not fetched_at:
+        return True
+
+    try:
+        parsed = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+    except Exception:
+        return True
+
+    age_seconds = (datetime.now(timezone.utc) - parsed).total_seconds()
+    return age_seconds >= IDENTIFIER_REFRESH_COOLDOWN_SECONDS
 
 
 def _refresh_metadata_for_symbol(symbol):

@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone
 from io import StringIO
 from urllib.request import Request, urlopen
 
@@ -20,9 +21,72 @@ HTTP_HEADERS = {
     )
 }
 
+DEFAULT_RETRIES = 2
+DEFAULT_PAUSE_SECONDS = 1.0
+DEFAULT_BACKOFF_FACTOR = 2.0
+
 
 def _normalize_symbol(symbol: str) -> str:
     return symbol.strip().replace(".", "-")
+
+
+def _backoff_delay_seconds(
+    pause_seconds: float,
+    attempt_index: int,
+    backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
+) -> float:
+    base = max(float(pause_seconds), 0.0)
+    factor = max(float(backoff_factor), 1.0)
+    return base * (factor ** max(int(attempt_index), 0))
+
+
+def _download_with_backoff(
+    *,
+    retries: int = DEFAULT_RETRIES,
+    pause_seconds: float = DEFAULT_PAUSE_SECONDS,
+    backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
+    **download_kwargs,
+):
+    last_df = pd.DataFrame()
+
+    for attempt in range(max(int(retries), 0) + 1):
+        try:
+            df = yf.download(**download_kwargs)
+            if df is not None and not df.empty:
+                return df
+            last_df = pd.DataFrame() if df is None else df
+        except Exception:
+            last_df = pd.DataFrame()
+
+        if attempt < max(int(retries), 0):
+            time.sleep(_backoff_delay_seconds(pause_seconds, attempt, backoff_factor))
+
+    return last_df
+
+
+def _get_ticker_info_with_backoff(
+    symbol: str,
+    retries: int = DEFAULT_RETRIES,
+    pause_seconds: float = DEFAULT_PAUSE_SECONDS,
+    backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
+):
+    last_info = {}
+
+    for attempt in range(max(int(retries), 0) + 1):
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.get_info()
+            if isinstance(info, dict) and info:
+                return info
+            if isinstance(info, dict):
+                last_info = info
+        except Exception:
+            pass
+
+        if attempt < max(int(retries), 0):
+            time.sleep(_backoff_delay_seconds(pause_seconds, attempt, backoff_factor))
+
+    return last_info
 
 
 def _download_html(url: str) -> str:
@@ -125,19 +189,20 @@ def _postprocess_download_df(df):
     return out
 
 
-def load_data(symbol, period, interval, retries=2, pause_seconds=1.0):
+def load_data(symbol, period, interval, retries=DEFAULT_RETRIES, pause_seconds=DEFAULT_PAUSE_SECONDS):
     last_df = pd.DataFrame()
 
     for attempt in range(retries + 1):
         try:
-            df = yf.download(
-                symbol,
+            df = _download_with_backoff(
+                tickers=symbol,
                 period=period,
                 interval=interval,
                 progress=False,
                 auto_adjust=False,
                 threads=False,
                 timeout=20,
+                retries=0,
             )
             df = _postprocess_download_df(df)
             if not df.empty:
@@ -147,12 +212,19 @@ def load_data(symbol, period, interval, retries=2, pause_seconds=1.0):
             pass
 
         if attempt < retries:
-            time.sleep(pause_seconds)
+            time.sleep(_backoff_delay_seconds(pause_seconds, attempt))
 
     return last_df
 
 
-def load_data_batch(symbols, period, interval, chunk_size=25, pause_seconds=1.0):
+def load_data_batch(
+    symbols,
+    period,
+    interval,
+    chunk_size=25,
+    pause_seconds=DEFAULT_PAUSE_SECONDS,
+    retries=DEFAULT_RETRIES,
+):
     result = {}
 
     if not symbols:
@@ -162,7 +234,7 @@ def load_data_batch(symbols, period, interval, chunk_size=25, pause_seconds=1.0)
         chunk = symbols[i:i + chunk_size]
 
         try:
-            df = yf.download(
+            df = _download_with_backoff(
                 tickers=" ".join(chunk),
                 period=period,
                 interval=interval,
@@ -171,6 +243,8 @@ def load_data_batch(symbols, period, interval, chunk_size=25, pause_seconds=1.0)
                 threads=False,
                 group_by="ticker",
                 timeout=30,
+                retries=retries,
+                pause_seconds=pause_seconds,
             )
         except Exception:
             df = pd.DataFrame()
@@ -201,14 +275,16 @@ def load_data_batch(symbols, period, interval, chunk_size=25, pause_seconds=1.0)
 
 def _load_single_fx_symbol(fx_symbol, period, interval):
     try:
-        df = yf.download(
-            fx_symbol,
+        df = _download_with_backoff(
+            tickers=fx_symbol,
             period=period,
             interval=interval,
             progress=False,
             auto_adjust=False,
             threads=False,
             timeout=20,
+            retries=DEFAULT_RETRIES,
+            pause_seconds=DEFAULT_PAUSE_SECONDS,
         )
     except Exception:
         return pd.DataFrame()
@@ -318,17 +394,6 @@ def load_ticker_metadata(symbol):
     Identifier werden zusätzlich über robuste Web-Fallbacks aufgelöst, weil
     Yahoo/yfinance bei ISIN/WKN inkonsistent sein kann.
     """
-    try:
-        ticker = yf.Ticker(symbol)
-    except Exception:
-        return {
-            "name": symbol,
-            "isin": "-",
-            "wkn": "-",
-            "currency": "USD",
-            "fundamentals": {},
-        }
-
     name = symbol
     isin = "-"
     wkn = "-"
@@ -336,7 +401,7 @@ def load_ticker_metadata(symbol):
     fundamentals = {}
 
     try:
-        info = ticker.get_info()
+        info = _get_ticker_info_with_backoff(symbol)
     except Exception:
         info = {}
 
@@ -373,4 +438,5 @@ def load_ticker_metadata(symbol):
         "wkn": identifiers["wkn"],
         "currency": (currency or "USD").upper(),
         "fundamentals": fundamentals,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
     }

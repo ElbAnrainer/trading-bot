@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from analysis_engine import run_analysis
+from cache_utils import get_cached_metadata
 from cli import choose_interval
 from config import BENCHMARK_SYMBOL, DEFAULT_MIN_VOLUME, DEFAULT_TOP_N, REPORTS_DIR as DEFAULT_REPORTS_DIR
 from data_loader import fallback_rate_to_eur, latest_rate_to_eur, load_ticker_metadata
@@ -32,7 +33,7 @@ def _ensure_dirs():
 def _company_name(symbol, cache):
     if symbol not in cache:
         try:
-            meta = load_ticker_metadata(symbol)
+            meta = get_cached_metadata(symbol, load_ticker_metadata)
             cache[symbol] = meta.get("name", symbol)
         except Exception:
             cache[symbol] = symbol

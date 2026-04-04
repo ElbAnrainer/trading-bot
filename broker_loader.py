@@ -1,9 +1,10 @@
-import yfinance as yf
 import pandas as pd
+
+from market_data_cache import load_data_cached
 
 
 def load_data(symbol, period, interval):
-    df = yf.download(symbol, period=period, interval=interval, progress=False)
+    df = load_data_cached(symbol, period=period, interval=interval, ttl_seconds=300)
 
     if df is None or df.empty:
         return pd.DataFrame()

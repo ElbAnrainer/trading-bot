@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
-import yfinance as yf
 
 from advanced_risk import (
     adaptive_stop_loss_pct,
@@ -21,6 +20,7 @@ from config import (
     get_active_profile_name,
     get_trading_config,
 )
+from market_data_cache import load_data_cached
 from performance import analyze_performance
 from strategy import add_signals
 
@@ -55,13 +55,7 @@ def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _fetch_symbol_data(symbol: str, period: str, interval: str = "1d") -> pd.DataFrame | None:
-    df = yf.download(
-        symbol,
-        period=period,
-        interval=interval,
-        auto_adjust=False,
-        progress=False,
-    )
+    df = load_data_cached(symbol, period=period, interval=interval, ttl_seconds=900)
     if df is None or df.empty:
         return None
 

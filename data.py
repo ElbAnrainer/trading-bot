@@ -1,14 +1,9 @@
 import pandas as pd
-import yfinance as yf
+
+from market_data_cache import load_data_cached
 
 def get_data(symbol="AAPL"):
-    df = yf.download(
-        symbol,
-        interval="5m",
-        period="1d",
-        auto_adjust=False,
-        progress=False,
-    )
+    df = load_data_cached(symbol, period="1d", interval="5m", ttl_seconds=300)
 
     if df.empty:
         return df
