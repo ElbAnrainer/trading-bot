@@ -37,3 +37,12 @@ def test_menu_items_show_enable_label_when_auto_run_is_disabled():
     items = terminal_ui._menu_items({"enabled": False, "label": "AUS"})
 
     assert ("Auto-Run einschalten", "toggle_auto_run") in items
+
+
+def test_set_cursor_hidden_ignores_curses_errors(monkeypatch):
+    def fail(value):
+        raise terminal_ui.curses.error("unsupported")
+
+    monkeypatch.setattr(terminal_ui.curses, "curs_set", fail)
+
+    terminal_ui._set_cursor_hidden()

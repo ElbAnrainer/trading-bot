@@ -100,6 +100,13 @@ MENU_ITEMS = [
 ]
 
 
+def _set_cursor_hidden() -> None:
+    try:
+        curses.curs_set(0)
+    except curses.error:
+        pass
+
+
 def _python_bin() -> str:
     if PYTHON_BIN.exists():
         return str(PYTHON_BIN)
@@ -244,7 +251,7 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
 
 def _stream_process(stdscr, title: str, cmd: list[str]) -> None:
     stdscr.clear()
-    curses.curs_set(0)
+    _set_cursor_hidden()
     stdscr.keypad(True)
     stdscr.nodelay(False)
     stdscr.timeout(100)
@@ -436,7 +443,7 @@ def _show_start_screen(stdscr) -> None:
 
 
 def main(stdscr) -> None:
-    curses.curs_set(0)
+    _set_cursor_hidden()
     stdscr.keypad(True)
     curses.noecho()
     curses.cbreak()
