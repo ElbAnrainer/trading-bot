@@ -1,4 +1,4 @@
-.TH TRADING-BOT 1 "2026-03-27" "trading-bot" "User Commands"
+.TH TRADING-BOT 1 "2026-04-04" "trading-bot" "User Commands"
 .SH NAME
 trading-bot \- Simulations- und Analyse-System für Aktien ohne Broker-Anbindung
 .SH SYNOPSIS
@@ -24,8 +24,8 @@ Anzahl der Top-Kandidaten.
 .BR \-mv ", " \-\-min-volume " " N
 Minimales durchschnittliches Handelsvolumen.
 .TP
-.B \-l
-Pro-/Live-Modus.
+.BR \-l ", " \-\-pro
+Verbesserte Analyse-Ausgabe mit Fortschritt, Details, Farben und Warnhinweisen.
 .TP
 .B \-\-live
 Zeigt die Live-Tabelle mit selbstlernendem Score.
@@ -89,6 +89,7 @@ Trailing Stop
 .IP \(bu 2
 Reinvestition
 
+.PP
 Diese Schätzung ist die relevante Antwort auf die Frage,
 was man mit 10.000 EUR ungefähr hätte machen können.
 .SH FILES
@@ -118,11 +119,13 @@ Das Menüskript
 .B run.sh
 stellt die wichtigsten Modi interaktiv bereit.
 
+.PP
 Der Menüpunkt
 .B Pro Schnell
 startet die verbesserte Analyse-Ausgabe direkt mit
 .BR \-\-pro " " \-\-fast .
 
+.PP
 Die Taste
 .B q
 soll dort das Skript jederzeit abbrechen:

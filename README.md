@@ -84,3 +84,14 @@ Mehr dazu steht in `docs/operations/runtime-data.md`.
 env MPLCONFIGDIR=/tmp/mpl-trading-bot ./.venv/bin/python main.py --help
 env MPLCONFIGDIR=/tmp/mpl-trading-bot ./.venv/bin/python main.py --pro --fast
 ```
+
+## Manpage
+
+Die Projekt-Manpage liegt im Repo unter `docs/manual/trading-bot.1`.
+Damit `man trading-bot` direkt funktioniert, kannst du sie in einen
+beschreibbaren `man1`-Ordner aus deinem `MANPATH` installieren:
+
+```bash
+bash ./install_manpage.sh
+man trading-bot
+```

@@ -14,3 +14,9 @@ Dieser Ordner enthaelt die Projekt-Dokumentation getrennt vom ausfuehrbaren Code
 - `operations/runtime-data.md` -> Datenpfade, Migration und CI-Verhalten
 - `refactor/Refactor_Dokumentation.pdf` -> Refactor-Dokumentation als PDF
 - `refactor/Refactor_Dokumentation.docx` -> Refactor-Dokumentation als DOCX
+
+## Manpage-Installation
+
+Fuer einen direkten Aufruf ueber `man trading-bot` kann die Manpage mit
+`bash ./install_manpage.sh` in einen passenden `man1`-Ordner aus dem
+aktuellen `MANPATH` installiert werden.
