@@ -21,6 +21,8 @@ def test_save_run_outputs_creates_files(tmp_path):
             "last_price_native": 217.0,
             "initial_cash_eur": 10000.0,
             "current_equity_eur": 10123.45,
+            "explanation_summary": "Kaufsignal mit positiver Trendlage.",
+            "explanation_points": ["These: über SMA50, Breakout"],
         }
     ]
     portfolio = {
@@ -48,6 +50,7 @@ def test_save_run_outputs_creates_files(tmp_path):
                 "wkn": "870747",
                 "future_signal": "WATCH",
                 "score": 55.0,
+                "explanation_summary": "Beobachtungskandidat mit sauberem Trendbild.",
             }
         ],
     )
@@ -64,6 +67,7 @@ def test_save_run_outputs_creates_files(tmp_path):
     assert data["period"] == "1mo"
     assert len(data["results"]) == 1
     assert data["results"][0]["symbol"] == "AAPL"
+    assert data["results"][0]["explanation_summary"] == "Kaufsignal mit positiver Trendlage."
     assert data["future_candidates"][0]["symbol"] == "MSFT"
     html = dashboard_html.read_text(encoding="utf-8")
     assert "US0378331005" in html
@@ -99,8 +103,10 @@ def test_update_latest_json_context_adds_plan_and_decisions(tmp_path):
                     "action": "BUY",
                     "symbol": "NVDA",
                     "reason": "WATCH_TOP_SELECTION",
+                    "reason_label": "Top-Auswahl trotz Watch-Signal",
                     "capital": 200.0,
                     "learned_score": 77.0,
+                    "explanation_summary": "Kaufauftrag trotz Watch-Signal.",
                 }
             ]
         },
@@ -110,3 +116,4 @@ def test_update_latest_json_context_adds_plan_and_decisions(tmp_path):
     assert data["profile_name"] == "offensiv"
     assert data["trading_plan"][0]["symbol"] == "NVDA"
     assert data["decisions"]["orders"][0]["action"] == "BUY"
+    assert data["decisions"]["orders"][0]["reason_label"] == "Top-Auswahl trotz Watch-Signal"

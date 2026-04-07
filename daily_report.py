@@ -57,6 +57,59 @@ def _analysis_source_label(source):
     return mapping.get(str(source), str(source))
 
 
+def _explanation_lines(items, empty_message, prefix="  - "):
+    lines = []
+    for item in items:
+        symbol = _safe_text(item.get("symbol"), "-")
+        summary = _safe_text(item.get("explanation_summary"), "")
+        if not summary:
+            continue
+        lines.append(f"{prefix}{symbol}: {summary}")
+        for point in item.get("explanation_points", [])[:3]:
+            text = _safe_text(point, "")
+            if text:
+                lines.append(f"      {text}")
+
+    if lines:
+        return lines
+    return [empty_message]
+
+
+def _explanation_html(items, empty_message):
+    rows = []
+    for item in items:
+        symbol = _safe_text(item.get("symbol"), "-")
+        summary = _safe_text(item.get("explanation_summary"), "")
+        if not summary:
+            continue
+        meta = " | ".join(
+            _safe_text(point, "")
+            for point in item.get("explanation_points", [])[:3]
+            if _safe_text(point, "")
+        )
+        meta_html = f"<div class='explanation-meta'>{meta}</div>" if meta else ""
+        rows.append(f"<li><strong>{symbol}</strong>: {summary}{meta_html}</li>")
+
+    if rows:
+        return "<ul class='explanations'>" + "".join(rows) + "</ul>"
+    return f"<p class='muted'>{empty_message}</p>"
+
+
+def _explanation_pdf_lines(items):
+    lines = []
+    for item in items:
+        symbol = _safe_text(item.get("symbol"), "-")
+        summary = _safe_text(item.get("explanation_summary"), "")
+        if not summary:
+            continue
+        lines.append(f"{symbol}: {summary}")
+        for point in item.get("explanation_points", [])[:3]:
+            text = _safe_text(point, "")
+            if text:
+                lines.append(f"  {text}")
+    return lines
+
+
 def _build_report_data():
     try:
         data = build_dashboard_data()
@@ -160,6 +213,10 @@ def _build_text_report(report):
         for row in rows:
             lines.append(format_table_row(row))
 
+    def _append_explanations(title, items, empty_message):
+        _append_section(title)
+        lines.extend(_explanation_lines(items, empty_message))
+
     lines.extend(
         [
             "AKTUELLER ANALYSE-LAUF",
@@ -200,6 +257,11 @@ def _build_text_report(report):
         ],
         "Keine frischen Analyse-Ergebnisse verfügbar.",
     )
+    _append_explanations(
+        "WARUM DIESE ANALYSE-ERGEBNISSE",
+        report["current_results"],
+        "Keine aktuellen Analyse-Erklärungen verfügbar.",
+    )
 
     _append_section("AKTUELLE KAUFKANDIDATEN")
     _append_table(
@@ -225,6 +287,11 @@ def _build_text_report(report):
             for item in report["future_candidates"]
         ],
         "Keine aktuellen Kaufkandidaten verfügbar.",
+    )
+    _append_explanations(
+        "WARUM DIESE KANDIDATEN",
+        report["future_candidates"],
+        "Keine Kandidaten-Erklärungen verfügbar.",
     )
 
     _append_section("AKTUELLER TRADING-PLAN")
@@ -252,6 +319,11 @@ def _build_text_report(report):
         ],
         "Kein aktueller Trading-Plan verfügbar.",
     )
+    _append_explanations(
+        "WARUM DIESER TRADING-PLAN",
+        report["trading_plan"],
+        "Keine Plan-Erklärungen verfügbar.",
+    )
 
     _append_section("AKTUELLE ORDERS")
     _append_table(
@@ -267,7 +339,7 @@ def _build_text_report(report):
             [
                 (item.get("action", "-"), 5, "<"),
                 (item.get("symbol", "-"), 6, "<"),
-                (item.get("reason", "-"), 24, "<"),
+                (_safe_text(item.get("reason_label"), item.get("reason", "-")), 24, "<"),
                 (f"{_safe_float(item.get('capital')):.2f}", 10, ">"),
                 (f"{_safe_float(item.get('weight')):.2f}", 5, ">"),
                 (f"{_safe_float(item.get('learned_score')):.2f}", 7, ">"),
@@ -275,6 +347,11 @@ def _build_text_report(report):
             for item in report["orders"]
         ],
         "Keine aktuellen Orders verfügbar.",
+    )
+    _append_explanations(
+        "WARUM DIESE ORDERS",
+        report["orders"],
+        "Keine Order-Erklärungen verfügbar.",
     )
 
     _append_section("SIMULIERTES DEPOT (AKTUELLER LAUF)")
@@ -454,7 +531,7 @@ def _build_html_report(report):
             "<tr>"
             f"<td>{item.get('action', '-')}</td>"
             f"<td>{item.get('symbol', '-')}</td>"
-            f"<td>{item.get('reason', '-')}</td>"
+            f"<td>{_safe_text(item.get('reason_label'), item.get('reason', '-'))}</td>"
             f"<td>{_safe_float(item.get('capital')):.2f} EUR</td>"
             f"<td>{_safe_float(item.get('weight')):.2f}</td>"
             f"<td>{_safe_float(item.get('learned_score')):.2f}</td>"
@@ -497,6 +574,23 @@ def _build_html_report(report):
 
     if not top_rows:
         top_rows = "<tr><td colspan='5'>Keine Top-Aktien verfügbar.</td></tr>"
+
+    result_explanations_html = _explanation_html(
+        report["current_results"],
+        "Keine aktuellen Analyse-Erklärungen verfügbar.",
+    )
+    candidate_explanations_html = _explanation_html(
+        report["future_candidates"],
+        "Keine Kandidaten-Erklärungen verfügbar.",
+    )
+    plan_explanations_html = _explanation_html(
+        report["trading_plan"],
+        "Keine Plan-Erklärungen verfügbar.",
+    )
+    order_explanations_html = _explanation_html(
+        report["orders"],
+        "Keine Order-Erklärungen verfügbar.",
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="de">
@@ -558,6 +652,18 @@ def _build_html_report(report):
     .muted {{
       color: #6b7280;
     }}
+    .explanations {{
+      margin: 14px 0 0 18px;
+      padding: 0;
+    }}
+    .explanations li {{
+      margin: 0 0 10px 0;
+    }}
+    .explanation-meta {{
+      color: #6b7280;
+      font-size: 13px;
+      margin-top: 4px;
+    }}
   </style>
 </head>
 <body>
@@ -597,6 +703,7 @@ def _build_html_report(report):
           {current_result_rows}
         </tbody>
       </table>
+      {result_explanations_html}
     </div>
 
     <div class="card">
@@ -617,6 +724,7 @@ def _build_html_report(report):
           {candidate_rows}
         </tbody>
       </table>
+      {candidate_explanations_html}
     </div>
 
     <div class="card">
@@ -638,6 +746,7 @@ def _build_html_report(report):
           {trading_plan_rows}
         </tbody>
       </table>
+      {plan_explanations_html}
     </div>
 
     <div class="card">
@@ -658,6 +767,7 @@ def _build_html_report(report):
           {order_rows}
         </tbody>
       </table>
+      {order_explanations_html}
     </div>
 
     <div class="card">
@@ -832,22 +942,22 @@ def _write_xml(report):
     _append_rows(
         "current_results",
         report.get("current_results", []),
-        ["symbol", "isin", "wkn", "signal", "company", "pnl_eur", "trade_count", "score"],
+        ["symbol", "isin", "wkn", "signal", "company", "pnl_eur", "trade_count", "score", "explanation_summary"],
     )
     _append_rows(
         "future_candidates",
         report.get("future_candidates", []),
-        ["symbol", "isin", "wkn", "future_signal", "company", "score", "learned_bonus"],
+        ["symbol", "isin", "wkn", "future_signal", "company", "score", "learned_bonus", "explanation_summary"],
     )
     _append_rows(
         "trading_plan",
         report.get("trading_plan", []),
-        ["symbol", "isin", "wkn", "company", "weight", "capital", "learned_score"],
+        ["symbol", "isin", "wkn", "company", "weight", "capital", "learned_score", "explanation_summary"],
     )
     _append_rows(
         "orders",
         report.get("orders", []),
-        ["action", "symbol", "reason", "capital", "weight", "learned_score"],
+        ["action", "symbol", "reason", "reason_label", "capital", "weight", "learned_score", "explanation_summary"],
     )
     _append_rows(
         "simulated_portfolio",
@@ -967,6 +1077,11 @@ def _write_pdf(report):
         ],
         "Keine frischen Analyse-Ergebnisse verfügbar.",
     )
+    _section("Warum diese Analyse-Ergebnisse")
+    _wrapped_lines(
+        _explanation_pdf_lines(report.get("current_results", [])),
+        "Keine aktuellen Analyse-Erklärungen verfügbar.",
+    )
 
     _section("Aktuelle Kaufkandidaten")
     _wrapped_lines(
@@ -980,6 +1095,11 @@ def _write_pdf(report):
             for item in report.get("future_candidates", [])
         ],
         "Keine aktuellen Kaufkandidaten verfügbar.",
+    )
+    _section("Warum diese Kandidaten")
+    _wrapped_lines(
+        _explanation_pdf_lines(report.get("future_candidates", [])),
+        "Keine Kandidaten-Erklärungen verfügbar.",
     )
 
     _section("Aktueller Trading-Plan")
@@ -995,19 +1115,29 @@ def _write_pdf(report):
         ],
         "Kein aktueller Trading-Plan verfügbar.",
     )
+    _section("Warum dieser Trading-Plan")
+    _wrapped_lines(
+        _explanation_pdf_lines(report.get("trading_plan", [])),
+        "Keine Plan-Erklärungen verfügbar.",
+    )
 
     _section("Aktuelle Orders")
     _wrapped_lines(
         [
             (
                 f"{item.get('action', '-')} {item.get('symbol', '-')} | "
-                f"Grund {item.get('reason', '-')} | Kapital { _safe_float(item.get('capital')):.2f} EUR | "
+                f"Grund {_safe_text(item.get('reason_label'), item.get('reason', '-'))} | Kapital { _safe_float(item.get('capital')):.2f} EUR | "
                 f"Gewicht { _safe_float(item.get('weight')):.2f} | "
                 f"Learned { _safe_float(item.get('learned_score')):.2f}"
             )
             for item in report.get("orders", [])
         ],
         "Keine aktuellen Orders verfügbar.",
+    )
+    _section("Warum diese Orders")
+    _wrapped_lines(
+        _explanation_pdf_lines(report.get("orders", [])),
+        "Keine Order-Erklärungen verfügbar.",
     )
 
     _section("Simuliertes Depot (aktueller Lauf)")

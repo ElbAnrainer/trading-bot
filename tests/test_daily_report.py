@@ -25,6 +25,8 @@ def _sample_dashboard_data():
                     "pnl_eur": 321.0,
                     "trade_count": 7,
                     "score": 72.5,
+                    "explanation_summary": "Kaufsignal wegen Breakout und Momentum.",
+                    "explanation_points": ["These: Breakout | Momentum"],
                 }
             ],
             "future_candidates": [
@@ -36,6 +38,8 @@ def _sample_dashboard_data():
                     "future_signal": "WATCH",
                     "score": 61.25,
                     "learned_bonus": 12.0,
+                    "explanation_summary": "Beobachtungskandidat mit sauberem Trendbild.",
+                    "explanation_points": ["Qualität: Score 61.25 | Risiko mittel"],
                 }
             ],
             "trading_plan": [
@@ -47,6 +51,8 @@ def _sample_dashboard_data():
                     "weight": 0.25,
                     "capital": 250.0,
                     "learned_score": 44.0,
+                    "explanation_summary": "Im Trading-Plan mit 25.0% Gewicht.",
+                    "explanation_points": ["Allokation: 25.0% = 250.00 EUR"],
                 }
             ],
             "simulated_portfolio": [
@@ -65,9 +71,12 @@ def _sample_dashboard_data():
                     "action": "BUY",
                     "symbol": "MSFT",
                     "reason": "WATCH_TOP_SELECTION",
+                    "reason_label": "Top-Auswahl trotz Watch-Signal",
                     "capital": 250.0,
                     "weight": 0.25,
                     "learned_score": 44.0,
+                    "explanation_summary": "Kaufauftrag trotz Watch-Signal.",
+                    "explanation_points": ["Auslöser: Top-Auswahl trotz Watch-Signal"],
                 }
             ],
         },
@@ -158,7 +167,8 @@ def test_build_text_report_includes_current_sections_and_aligns_top_stock_column
     assert "AKTUELLER TRADING-PLAN" in text
     assert "AKTUELLE ORDERS" in text
     assert "SIMULIERTES DEPOT (AKTUELLER LAUF)" in text
-    assert "WATCH_TOP_SELECTION" in text
+    assert "WARUM DIESER TRADING-PLAN" in text
+    assert "Top-Auswahl trotz Watch-Signal" in text
     assert "US5949181045" in text
     assert "US0378331005" in text
     assert expected
@@ -176,6 +186,7 @@ def test_build_html_report_includes_analysis_state_and_orders_sections(monkeypat
     assert "Aktuelle Orders" in html
     assert "Simuliertes Depot (aktueller Lauf)" in html
     assert "Mini-System / Depot-State" in html
+    assert "Im Trading-Plan mit 25.0% Gewicht." in html
     assert "US67066G1040" in html
     assert "918422" in html
 
@@ -206,6 +217,7 @@ def test_write_csv_and_xml_include_analysis_and_nested_sections(monkeypatch, tmp
     assert root.find("future_candidates/row/isin").text == "US5949181045"
     assert root.find("trading_plan/row/symbol").text == "MSFT"
     assert root.find("orders/row/action").text == "BUY"
+    assert root.find("orders/row/reason_label").text == "Top-Auswahl trotz Watch-Signal"
     assert root.find("simulated_portfolio/row/wkn").text == "918422"
 
 

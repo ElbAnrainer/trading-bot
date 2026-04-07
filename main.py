@@ -18,6 +18,7 @@ from output import (
     set_beginner_mode,
     print_explanations,
 )
+from decision_explanations import enrich_analysis_bundle
 from report_pdf import run as run_pdf_report
 from report_writer import update_latest_json_context
 from gmail_api_report import send_report_email
@@ -415,6 +416,12 @@ def run():
         top_n=active_top_n,
         profile_name=active_profile,
     )
+    result, plan, _ = enrich_analysis_bundle(
+        result,
+        trading_plan=plan,
+        decisions=None,
+        profile_name=active_profile,
+    )
     print_trading_plan(plan)
 
     current_positions = {}
@@ -425,6 +432,12 @@ def run():
         current_positions=current_positions,
         peak_equity=None,
         top_n=active_top_n,
+        profile_name=active_profile,
+    )
+    result, plan, decisions = enrich_analysis_bundle(
+        result,
+        trading_plan=plan,
+        decisions=decisions,
         profile_name=active_profile,
     )
     print_trading_decisions(decisions)
@@ -444,6 +457,8 @@ def run():
     update_latest_json_context(
         output_dir=REPORTS_DIR,
         profile_name=active_profile,
+        results=result.get("results", []),
+        portfolio=result.get("portfolio", {}),
         future_candidates=result.get("future_candidates", []),
         trading_plan=plan,
         decisions=decisions,

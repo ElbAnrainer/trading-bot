@@ -260,6 +260,9 @@ def print_trading_plan(plan: list[dict]) -> None:
             f"{p['capital']:>14.2f} EUR"
             f"{p['learned_score']:>14.2f}"
         )
+        summary = str(p.get("explanation_summary", "")).strip()
+        if summary:
+            print(f"  -> {summary}")
 
     print("========================================\n")
 
@@ -291,7 +294,10 @@ def print_trading_decisions(decisions: dict[str, Any]) -> None:
             f"{order['symbol']:<8}"
             f"{float(order.get('capital', 0.0)):>14.2f} EUR"
             f"{float(order.get('learned_score', 0.0)):>14.2f}  "
-            f"{order.get('reason', '-')}"
+            f"{order.get('reason_label', order.get('reason', '-'))}"
         )
+        summary = str(order.get("explanation_summary", "")).strip()
+        if summary:
+            print(f"  -> {summary}")
 
     print("========================================\n")

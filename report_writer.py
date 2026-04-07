@@ -9,65 +9,82 @@ def _ensure_dir(path):
     Path(path).mkdir(parents=True, exist_ok=True)
 
 
+def _json_safe_explanation_fields(item):
+    return {
+        "strength": item.get("strength"),
+        "risk": item.get("risk"),
+        "reasons": item.get("reasons"),
+        "score_before_learning": item.get("score_before_learning"),
+        "learned_bonus": item.get("learned_bonus"),
+        "learned_confidence": item.get("learned_confidence"),
+        "relative_strength_pct": item.get("relative_strength_pct"),
+        "volatility_pct": item.get("volatility_pct"),
+        "reason_label": item.get("reason_label"),
+        "explanation_summary": item.get("explanation_summary"),
+        "explanation_points": item.get("explanation_points"),
+    }
+
+
 def _json_safe_results(results):
     safe = []
     for item in results:
-        safe.append(
-            {
-                "symbol": item.get("symbol"),
-                "company_name": item.get("company_name"),
-                "isin": item.get("isin"),
-                "wkn": item.get("wkn"),
-                "signal": item.get("signal"),
-                "native_currency": item.get("native_currency"),
-                "pnl_eur": item.get("pnl_eur"),
-                "pnl_native": item.get("pnl_native"),
-                "pnl_pct_eur": item.get("pnl_pct_eur"),
-                "trade_count": item.get("trade_count"),
-                "hit_rate_pct": item.get("hit_rate_pct"),
-                "score": item.get("score"),
-                "last_price_eur": item.get("last_price_eur"),
-                "last_price_native": item.get("last_price_native"),
-                "initial_cash_eur": item.get("initial_cash_eur"),
-                "current_equity_eur": item.get("current_equity_eur"),
-            }
-        )
+        row = {
+            "symbol": item.get("symbol"),
+            "company_name": item.get("company_name"),
+            "isin": item.get("isin"),
+            "wkn": item.get("wkn"),
+            "signal": item.get("signal"),
+            "native_currency": item.get("native_currency"),
+            "pnl_eur": item.get("pnl_eur"),
+            "pnl_native": item.get("pnl_native"),
+            "pnl_pct_eur": item.get("pnl_pct_eur"),
+            "trade_count": item.get("trade_count"),
+            "hit_rate_pct": item.get("hit_rate_pct"),
+            "score": item.get("score"),
+            "last_price_eur": item.get("last_price_eur"),
+            "last_price_native": item.get("last_price_native"),
+            "initial_cash_eur": item.get("initial_cash_eur"),
+            "current_equity_eur": item.get("current_equity_eur"),
+        }
+        row.update(_json_safe_explanation_fields(item))
+        safe.append(row)
     return safe
 
 
 def _json_safe_candidates(candidates):
     safe = []
     for item in candidates or []:
-        safe.append(
-            {
-                "symbol": item.get("symbol"),
-                "company_name": item.get("company_name", item.get("company")),
-                "isin": item.get("isin"),
-                "wkn": item.get("wkn"),
-                "future_signal": item.get("future_signal"),
-                "score": item.get("score"),
-                "score_before_learning": item.get("score_before_learning"),
-                "learned_bonus": item.get("learned_bonus"),
-                "learned_confidence": item.get("learned_confidence"),
-            }
-        )
+        row = {
+            "symbol": item.get("symbol"),
+            "company_name": item.get("company_name", item.get("company")),
+            "isin": item.get("isin"),
+            "wkn": item.get("wkn"),
+            "future_signal": item.get("future_signal"),
+            "score": item.get("score"),
+            "score_before_learning": item.get("score_before_learning"),
+            "learned_bonus": item.get("learned_bonus"),
+            "learned_confidence": item.get("learned_confidence"),
+        }
+        row.update(_json_safe_explanation_fields(item))
+        safe.append(row)
     return safe
 
 
 def _json_safe_trading_plan(plan):
     safe = []
     for item in plan or []:
-        safe.append(
-            {
-                "symbol": item.get("symbol"),
-                "company": item.get("company", item.get("company_name")),
-                "isin": item.get("isin"),
-                "wkn": item.get("wkn"),
-                "weight": item.get("weight"),
-                "capital": item.get("capital"),
-                "learned_score": item.get("learned_score"),
-            }
-        )
+        row = {
+            "symbol": item.get("symbol"),
+            "company": item.get("company", item.get("company_name")),
+            "isin": item.get("isin"),
+            "wkn": item.get("wkn"),
+            "signal": item.get("signal"),
+            "weight": item.get("weight"),
+            "capital": item.get("capital"),
+            "learned_score": item.get("learned_score"),
+        }
+        row.update(_json_safe_explanation_fields(item))
+        safe.append(row)
     return safe
 
 
@@ -77,16 +94,20 @@ def _json_safe_decisions(decisions):
 
     safe_orders = []
     for order in decisions.get("orders", []):
-        safe_orders.append(
-            {
-                "action": order.get("action"),
-                "symbol": order.get("symbol"),
-                "reason": order.get("reason"),
-                "capital": order.get("capital"),
-                "weight": order.get("weight"),
-                "learned_score": order.get("learned_score"),
-            }
-        )
+        row = {
+            "action": order.get("action"),
+            "symbol": order.get("symbol"),
+            "company": order.get("company", order.get("company_name")),
+            "isin": order.get("isin"),
+            "wkn": order.get("wkn"),
+            "signal": order.get("signal"),
+            "reason": order.get("reason"),
+            "capital": order.get("capital"),
+            "weight": order.get("weight"),
+            "learned_score": order.get("learned_score"),
+        }
+        row.update(_json_safe_explanation_fields(order))
+        safe_orders.append(row)
 
     return {
         "orders": safe_orders,
@@ -129,6 +150,8 @@ def update_latest_json_context(
     output_dir,
     *,
     profile_name=None,
+    results=None,
+    portfolio=None,
     future_candidates=None,
     trading_plan=None,
     decisions=None,
@@ -144,6 +167,10 @@ def update_latest_json_context(
 
     if profile_name is not None:
         payload["profile_name"] = profile_name
+    if results is not None:
+        payload["results"] = _json_safe_results(results)
+    if portfolio is not None:
+        payload["portfolio"] = portfolio
     if future_candidates is not None:
         payload["future_candidates"] = _json_safe_candidates(future_candidates)
     if trading_plan is not None:

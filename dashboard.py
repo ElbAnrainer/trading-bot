@@ -48,6 +48,17 @@ def _safe_text(value: Any, default: str = "-") -> str:
     return text if text else default
 
 
+def _safe_text_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        text = _safe_text(item, "")
+        if text:
+            out.append(text)
+    return out
+
+
 def _company_name(item: dict[str, Any]) -> str:
     return _safe_text(
         item.get("company_name") or item.get("company") or item.get("symbol"),
@@ -119,6 +130,8 @@ def _normalize_current_results(snapshot: dict[str, Any]) -> list[dict[str, Any]]
                 "score": _safe_float(item.get("score")),
                 "last_price_eur": _safe_float(item.get("last_price_eur")),
                 "last_price_native": _safe_float(item.get("last_price_native")),
+                "explanation_summary": _safe_text(item.get("explanation_summary"), ""),
+                "explanation_points": _safe_text_list(item.get("explanation_points")),
             }
         )
     return rows
@@ -137,6 +150,8 @@ def _normalize_future_candidates(snapshot: dict[str, Any]) -> list[dict[str, Any
                 "score": _safe_float(item.get("score")),
                 "learned_bonus": _safe_float(item.get("learned_bonus")),
                 "learned_confidence": _safe_float(item.get("learned_confidence")),
+                "explanation_summary": _safe_text(item.get("explanation_summary"), ""),
+                "explanation_points": _safe_text_list(item.get("explanation_points")),
             }
         )
     return rows
@@ -151,9 +166,12 @@ def _normalize_trading_plan(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
                 "company": _company_name(item),
                 "isin": _safe_text(item.get("isin")),
                 "wkn": _safe_text(item.get("wkn")),
+                "signal": _safe_text(item.get("signal"), ""),
                 "weight": _safe_float(item.get("weight")),
                 "capital": _safe_float(item.get("capital")),
                 "learned_score": _safe_float(item.get("learned_score")),
+                "explanation_summary": _safe_text(item.get("explanation_summary"), ""),
+                "explanation_points": _safe_text_list(item.get("explanation_points")),
             }
         )
     return rows
@@ -193,9 +211,16 @@ def _normalize_orders(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
                 "action": _safe_text(item.get("action")),
                 "symbol": _safe_text(item.get("symbol")),
                 "reason": _safe_text(item.get("reason")),
+                "reason_label": _safe_text(item.get("reason_label"), _safe_text(item.get("reason"))),
                 "capital": _safe_float(item.get("capital")),
                 "weight": _safe_float(item.get("weight")),
                 "learned_score": _safe_float(item.get("learned_score")),
+                "company": _company_name(item),
+                "isin": _safe_text(item.get("isin")),
+                "wkn": _safe_text(item.get("wkn")),
+                "signal": _safe_text(item.get("signal"), ""),
+                "explanation_summary": _safe_text(item.get("explanation_summary"), ""),
+                "explanation_points": _safe_text_list(item.get("explanation_points")),
             }
         )
     return rows
@@ -364,6 +389,29 @@ def _analysis_source_label(source: str) -> str:
     return labels.get(source, source)
 
 
+def _render_explanation_list(items: list[dict[str, Any]], empty_text: str) -> str:
+    entries = []
+    for item in items:
+        summary = _safe_text(item.get("explanation_summary"), "")
+        if not summary:
+            continue
+        points = _safe_text_list(item.get("explanation_points"))
+        detail_html = ""
+        if points:
+            detail_html = "<div class='explanation-meta'>" + " | ".join(_html_escape(point) for point in points[:3]) + "</div>"
+        entries.append(
+            "<li>"
+            f"<strong>{_html_escape(item.get('symbol', '-'))}</strong>: {_html_escape(summary)}"
+            f"{detail_html}"
+            "</li>"
+        )
+
+    if not entries:
+        return f"<p class='muted'>{_html_escape(empty_text)}</p>"
+
+    return "<ul class='explanations'>" + "".join(entries) + "</ul>"
+
+
 def _write_dashboard_html(data: dict[str, Any]) -> None:
     _ensure_reports_dir()
 
@@ -438,6 +486,25 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
     if not plan_rows:
         plan_rows.append("<tr><td colspan='7'>Kein Trading-Plan verfügbar.</td></tr>")
 
+    order_rows = []
+    for row in analysis.get("orders", []):
+        capital_text = f"{float(row.get('capital', 0.0)):,.2f} EUR"
+        weight_text = f"{float(row.get('weight', 0.0)) * 100:.1f}%"
+        learned_score_text = f"{float(row.get('learned_score', 0.0)):.2f}"
+        order_rows.append(
+            "<tr>"
+            f"<td>{_html_escape(row.get('action', '-'))}</td>"
+            f"<td>{_html_escape(row.get('symbol', '-'))}</td>"
+            f"<td>{_html_escape(row.get('reason_label', row.get('reason', '-')))}</td>"
+            f"<td style='text-align:right'>{_html_escape(capital_text)}</td>"
+            f"<td style='text-align:right'>{_html_escape(weight_text)}</td>"
+            f"<td style='text-align:right'>{_html_escape(learned_score_text)}</td>"
+            "</tr>"
+        )
+
+    if not order_rows:
+        order_rows.append("<tr><td colspan='6'>Keine aktuellen Orders verfügbar.</td></tr>")
+
     simulated_portfolio_rows = []
     for row in analysis.get("simulated_portfolio", []):
         qty_text = f"{float(row.get('qty', 0.0)):.2f}"
@@ -495,6 +562,22 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
     analysis_orders_count = len(analysis.get("orders", []))
     state_positions_count = state.get("positions", 0)
     state_updated_at = state.get("updated_at") or "-"
+    result_explanations_html = _render_explanation_list(
+        analysis.get("current_results", []),
+        "Keine erklärbaren Details zum aktuellen Analyse-Lauf verfügbar.",
+    )
+    candidate_explanations_html = _render_explanation_list(
+        analysis.get("future_candidates", []),
+        "Keine Kandidaten-Erklärungen verfügbar.",
+    )
+    plan_explanations_html = _render_explanation_list(
+        plan_source,
+        "Kein erklärbarer Trading-Plan verfügbar.",
+    )
+    order_explanations_html = _render_explanation_list(
+        analysis.get("orders", []),
+        "Keine aktuellen Order-Erklärungen verfügbar.",
+    )
 
     html = f"""<!DOCTYPE html>
 <html lang="de">
@@ -558,6 +641,18 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
     }}
     .mono {{
       font-family: Menlo, Consolas, monospace;
+    }}
+    .explanations {{
+      margin: 14px 0 0 18px;
+      padding: 0;
+    }}
+    .explanations li {{
+      margin: 0 0 10px 0;
+    }}
+    .explanation-meta {{
+      color: #6b7280;
+      font-size: 13px;
+      margin-top: 4px;
     }}
   </style>
 </head>
@@ -655,6 +750,7 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
           {''.join(current_result_rows)}
         </tbody>
       </table>
+      {result_explanations_html}
     </div>
 
     <div class="card">
@@ -676,6 +772,7 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
           {''.join(candidate_rows)}
         </tbody>
       </table>
+      {candidate_explanations_html}
     </div>
 
     <div class="card">
@@ -697,6 +794,28 @@ def _write_dashboard_html(data: dict[str, Any]) -> None:
           {''.join(plan_rows)}
         </tbody>
       </table>
+      {plan_explanations_html}
+    </div>
+
+    <div class="card">
+      <h2>Aktuelle Orders</h2>
+      <p class="muted">Ein- und Ausstiege aus dem aktuellen Lauf mit ihrer fachlichen Begründung.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Aktion</th>
+            <th>Symbol</th>
+            <th>Auslöser</th>
+            <th>Kapital</th>
+            <th>Gewicht</th>
+            <th>Learned</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(order_rows)}
+        </tbody>
+      </table>
+      {order_explanations_html}
     </div>
 
     <div class="card">

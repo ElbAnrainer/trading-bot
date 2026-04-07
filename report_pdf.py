@@ -18,6 +18,7 @@ from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, S
 
 from config import (
     CHART_PATH as DEFAULT_CHART_PATH,
+    LATEST_RUN_JSON as DEFAULT_LATEST_RUN_JSON,
     REALISTIC_BACKTEST_JSON as DEFAULT_REALISTIC_BACKTEST_JSON,
     REPORTS_DIR as DEFAULT_REPORTS_DIR,
     TRADING_JOURNAL_CSV,
@@ -32,6 +33,7 @@ REPORTS_DIR = DEFAULT_REPORTS_DIR
 JOURNAL_CANDIDATES = [
     TRADING_JOURNAL_CSV,
 ]
+LATEST_RUN_JSON = DEFAULT_LATEST_RUN_JSON
 REALISTIC_BACKTEST_JSON = DEFAULT_REALISTIC_BACKTEST_JSON
 
 CHART_PATH = DEFAULT_CHART_PATH
@@ -100,6 +102,21 @@ def load_trades() -> list[dict[str, Any]]:
 def load_realistic_backtest() -> dict[str, Any] | None:
     if not os.path.exists(REALISTIC_BACKTEST_JSON):
         return None
+
+
+def load_latest_run() -> dict[str, Any] | None:
+    if not os.path.exists(LATEST_RUN_JSON):
+        return None
+
+    try:
+        with open(LATEST_RUN_JSON, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return None
+
+    return None
 
     try:
         with open(REALISTIC_BACKTEST_JSON, "r", encoding="utf-8") as f:
@@ -581,12 +598,54 @@ def _build_realistic_section(
     )
 
 
+def _build_explainable_plan_section(
+    content: list[Any],
+    latest_run: dict[str, Any] | None,
+    section_style: ParagraphStyle,
+    body_style: ParagraphStyle,
+) -> None:
+    content.append(Paragraph("Erklärbarer Trading-Plan", section_style))
+
+    if not latest_run:
+        content.append(Paragraph("Es liegt noch kein aktueller Analyse-Snapshot vor.", body_style))
+        return
+
+    sections = [
+        ("Aktuelle Kandidaten", latest_run.get("future_candidates", [])[:5]),
+        ("Trading-Plan", latest_run.get("trading_plan", [])[:5]),
+        ("Aktuelle Orders", (latest_run.get("decisions", {}) or {}).get("orders", [])[:5]),
+    ]
+
+    for title, items in sections:
+        content.append(Paragraph(title, body_style))
+        if not items:
+            content.append(Paragraph("Keine Einträge vorhanden.", body_style))
+            content.append(Spacer(1, 8))
+            continue
+
+        for item in items:
+            symbol = escape(str(item.get("symbol", "-")))
+            summary = escape(str(item.get("explanation_summary", "") or "Keine Erklärung verfügbar."))
+            content.append(Paragraph(f"<b>{symbol}</b>: {summary}", body_style))
+
+            points = item.get("explanation_points", [])
+            if isinstance(points, list):
+                for point in points[:3]:
+                    text = str(point).strip()
+                    if text:
+                        content.append(Paragraph(f"• {escape(text)}", body_style))
+            content.append(Spacer(1, 6))
+
+        content.append(Spacer(1, 8))
+
+
 def build_pdf(
     metrics: dict[str, Any],
     chart_path: str | None,
     top_symbols: list[dict[str, Any]],
     realistic_data: dict[str, Any] | None,
     realistic_chart: str | None,
+    latest_run: dict[str, Any] | None,
 ) -> str:
     output_path = _build_output_path()
 
@@ -623,6 +682,8 @@ def build_pdf(
     _build_profile_section(content, section_style, body_style)
     _build_realistic_section(content, realistic_data, realistic_chart, section_style, body_style)
     content.append(PageBreak())
+    _build_explainable_plan_section(content, latest_run, section_style, body_style)
+    content.append(Spacer(1, 16))
     _build_signal_section(content, metrics, chart_path, top_symbols, section_style, body_style)
 
     doc.build(content)
@@ -644,8 +705,9 @@ def run() -> str:
 
     realistic_data = load_realistic_backtest()
     realistic_chart = create_realistic_chart(realistic_data)
+    latest_run = load_latest_run()
 
-    return build_pdf(metrics, chart, top_symbols, realistic_data, realistic_chart)
+    return build_pdf(metrics, chart, top_symbols, realistic_data, realistic_chart, latest_run)
 
 
 if __name__ == "__main__":

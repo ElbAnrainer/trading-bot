@@ -18,6 +18,8 @@ def _sample_analysis_result():
                 "trade_count": 7,
                 "score": 72.5,
                 "native_currency": "USD",
+                "explanation_summary": "Kaufsignal wegen Breakout und Momentum.",
+                "explanation_points": ["These: Breakout | Momentum"],
             }
         ],
         "portfolio": {
@@ -40,6 +42,8 @@ def _sample_analysis_result():
                 "future_signal": "WATCH",
                 "score": 61.25,
                 "learned_bonus": 12.0,
+                "explanation_summary": "Beobachtungskandidat mit sauberem Trendbild.",
+                "explanation_points": ["Qualität: Score 61.25 | Risiko mittel"],
             }
         ],
     }
@@ -93,6 +97,8 @@ def test_build_dashboard_data_prefers_current_analysis(monkeypatch):
                 "weight": 0.2,
                 "capital": 200.0,
                 "learned_score": 42.0,
+                "explanation_summary": "Im Trading-Plan mit 20.0% Gewicht.",
+                "explanation_points": ["Allokation: 20.0% = 200.00 EUR"],
             }
         ],
         decisions={
@@ -101,8 +107,11 @@ def test_build_dashboard_data_prefers_current_analysis(monkeypatch):
                     "action": "BUY",
                     "symbol": "MSFT",
                     "reason": "WATCH_TOP_SELECTION",
+                    "reason_label": "Top-Auswahl trotz Watch-Signal",
                     "capital": 200.0,
                     "learned_score": 42.0,
+                    "explanation_summary": "Kaufauftrag trotz Watch-Signal.",
+                    "explanation_points": ["Auslöser: Top-Auswahl trotz Watch-Signal"],
                 }
             ]
         },
@@ -169,6 +178,8 @@ def test_build_dashboard_writes_html_with_current_analysis(monkeypatch, tmp_path
     assert "Aktuelle Analyse-Ergebnisse" in html
     assert "NVIDIA Corporation" in html
     assert "US67066G1040" in html
+    assert "Aktuelle Orders" in html
+    assert "Kaufsignal wegen Breakout und Momentum." in html
 
 
 def test_build_dashboard_data_honors_explicit_profile_override(monkeypatch):
