@@ -15,7 +15,7 @@ concurrency:
 jobs:
   weekly-walk-forward:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     env:
       MPLCONFIGDIR: /tmp/mpl-trading-bot
       TRADING_BOT_DATA_DIR: ${{ github.workspace }}
