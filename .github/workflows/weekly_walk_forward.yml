@@ -40,13 +40,33 @@ jobs:
         run: |
           bash -n run_walk_forward.sh
 
+      - name: Mail-Konfiguration prüfen
+        id: mail_config
+        shell: bash
+        env:
+          GOOGLE_CLIENT_SECRET_JSON_B64: ${{ secrets.GOOGLE_CLIENT_SECRET_JSON_B64 }}
+          GOOGLE_TOKEN_JSON_B64: ${{ secrets.GOOGLE_TOKEN_JSON_B64 }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: |
+          enabled=true
+          for name in GOOGLE_CLIENT_SECRET_JSON_B64 GOOGLE_TOKEN_JSON_B64 MAIL_FROM MAIL_TO; do
+            if [ -z "${!name:-}" ]; then
+              enabled=false
+              break
+            fi
+          done
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+
       - name: Google OAuth Dateien wiederherstellen
+        if: steps.mail_config.outputs.enabled == 'true'
         shell: bash
         run: |
           echo "${{ secrets.GOOGLE_CLIENT_SECRET_JSON_B64 }}" | base64 --decode > credentials_google.json
           echo "${{ secrets.GOOGLE_TOKEN_JSON_B64 }}" | base64 --decode > token_google.json
 
       - name: .env schreiben
+        if: steps.mail_config.outputs.enabled == 'true'
         shell: bash
         run: |
           cat > .env <<EOF
@@ -62,6 +82,7 @@ jobs:
           bash ./run_walk_forward.sh
 
       - name: Weekly Mail versenden
+        if: steps.mail_config.outputs.enabled == 'true'
         env:
           PYTHONPATH: .
         run: |
@@ -90,6 +111,11 @@ jobs:
 
           send_report_email(attachment_paths=attachments)
           PY
+
+      - name: Weekly Mail übersprungen
+        if: steps.mail_config.outputs.enabled != 'true'
+        run: |
+          echo "Mail-Secrets fehlen oder sind leer. Report wurde erzeugt, Mailversand wird übersprungen."
 
       - name: Walk-Forward-Artefakte hochladen
         uses: actions/upload-artifact@v6

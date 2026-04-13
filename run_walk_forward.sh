@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")"
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$PROJECT_ROOT"
 
 echo "======================================"
 echo " Starte Walk-Forward-Report"
@@ -10,10 +11,17 @@ echo "Hinweis: Nur Simulation, keine echten Orders."
 echo "Legacy-Report-Pfad: python walk_forward.py"
 echo "======================================"
 
-source .venv/bin/activate
-export PYTHONPATH=.
+if [ -d ".venv" ]; then
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+fi
 
-python walk_forward.py
+PYTHON_BIN="python"
+[ -x ".venv/bin/python" ] && PYTHON_BIN=".venv/bin/python"
+
+export PYTHONPATH="$PROJECT_ROOT"
+
+"$PYTHON_BIN" walk_forward.py
 
 echo "======================================"
 echo " Walk-Forward-Report fertig"
